@@ -1,0 +1,52 @@
+# trace-federator configuration (JSON; see royal-road/trace-federator/README.md).
+# Placeholders in <...>. Backend names are what users see as "instances" in
+# the Traces page and what trace-reader's resourceNames refer to.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trace-federator
+  namespace: tracing
+data:
+  config.json: |
+    {
+      "listen": ":8080",
+      "instanceNamespace": "tracing",
+      "allView": "all-stores",
+      "authz": {"group": "tracing.royalroad.com", "resource": "traces", "cacheTTL": "60s"},
+      "backends": [
+        {
+          "name": "victoria",
+          "type": "tempo",
+          "url": "http://victoria-traces.victoria-traces.svc:10428/select/tempo",
+          "priority": 100,
+          "maxLookback": "2d",
+          "searchTimeout": "8s",
+          "traceTimeout": "5s"
+        },
+        {
+          "name": "signoz",
+          "type": "signoz",
+          "url": "<signoz-api-url>",
+          "apiKeyFile": "/etc/trace-federator/credentials/signoz-api-key",
+          "priority": 90,
+          "maxLookback": "30d",
+          "searchTimeout": "10s",
+          "traceTimeout": "8s"
+        },
+        {
+          "name": "sentry",
+          "type": "sentry",
+          "url": "http://sentry-web.sentry.svc:9000",
+          "publicURL": "<sentry-public-url>",
+          "organization": "<sentry-organization>",
+          "tokenFile": "/etc/trace-federator/credentials/sentry-token",
+          "spanNameField": "span.name",
+          "attributeAllowlist": ["http.response_status_code", "http.request.method", "db.system", "origin", "sdk.name"],
+          "unsupportedAttributes": ["resource.k8s.namespace.name", "resource.k8s.pod.name", "resource.k8s.deployment.name"],
+          "priority": 10,
+          "maxLookback": "90d",
+          "searchTimeout": "10s",
+          "traceTimeout": "8s"
+        }
+      ]
+    }
