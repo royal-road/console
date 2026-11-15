@@ -1,0 +1,27 @@
+# Bind Sentry project "web" (production only) to the web Deployment, and
+# project "api" (all environments) to everything in namespace api. Only
+# cluster-admins can create these.
+apiVersion: observability.royalroad.com/v1alpha1
+kind: SentryProjectBinding
+metadata:
+  name: web
+spec:
+  sentry:
+    organization: <sentry-organization>
+    project: web
+    environments: [production]
+  targets:
+    - namespace: web
+      kind: Deployment
+      name: web
+---
+apiVersion: observability.royalroad.com/v1alpha1
+kind: SentryProjectBinding
+metadata:
+  name: api
+spec:
+  sentry:
+    organization: <sentry-organization>
+    project: api
+  targets:
+    - namespace: api
