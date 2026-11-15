@@ -13,6 +13,9 @@ reads these resources, and no OpenShift controller has to act on them.
 | `90_consoleplugins.crd.yaml` | `console/v1/zz_generated.crd-manifests/` | Administration › Dynamic Plugins and the Overview's Dynamic Plugins status. Display only: `BRIDGE_PLUGINS` still decides what loads |
 | `ols.openshift.io_olsconfigs.yaml` | openshift/lightspeed-operator `config/crd/bases/` | The YAML editor's "Ask OpenShift Lightspeed" button, shown to users who can read `OLSConfig/cluster` ([`../lightspeed/`](../lightspeed/README.md)) |
 
+`observability.royalroad.com_sentryprojectbindings.yaml` is not an OpenShift CRD; it is
+Royal Road's own. See [SentryProjectBinding](#sentryprojectbinding).
+
 Production already has `helmchartrepositories.helm.openshift.io`. It is not
 shipped here.
 
@@ -59,3 +62,54 @@ curl -fsSL -o royal-road/deploy/crds/ols.openshift.io_olsconfigs.yaml \
 
 The file is about 150 KB; plain `kubectl apply` handles it (tested), so
 `--server-side` is not required.
+
+## SentryProjectBinding
+
+`observability.royalroad.com_sentryprojectbindings.yaml` defines
+`SentryProjectBinding` (`observability.royalroad.com/v1alpha1`, cluster-scoped, short
+name `spb`). Each binding links one Sentry project to Kubernetes namespaces or workloads.
+Optionally it covers only some of the project's environments.
+
+```yaml
+apiVersion: observability.royalroad.com/v1alpha1
+kind: SentryProjectBinding
+metadata:
+  name: web
+spec:
+  sentry:
+    organization: <org-slug>
+    project: <project-slug>
+    environments: [production]   # optional; empty or absent = all environments
+  targets:
+    - namespace: web             # whole namespace
+    - namespace: shop
+      kind: Deployment           # Deployment | StatefulSet | DaemonSet | CronJob | Job
+      name: checkout             # required together with kind
+```
+
+**Who can write it.** Only cluster-admins. No role grants this CRD, and none may aggregate
+into `admin`, `edit` or `view`. A binding decides who sees a project's data, so it must not
+be self-service. Readers get their own `list`/`watch` ClusterRole. The trace federator's is
+in [`../tracing/10-rbac.yaml`](../tracing/10-rbac.yaml).
+
+**What a binding grants.** A user may see a bound project, within the bound environments,
+if they can `get` at least one target:
+- for a workload target, `get` on that workload;
+- for a namespace target, `get` on pods in that namespace.
+
+Users who can `list` SentryProjectBindings (cluster-admins) see every bound project. Projects
+without a binding are shown to nobody. Several bindings for the same project combine: if any
+of them has no `environments`, all environments are covered.
+
+**Looking up a workload's projects** (for consumers such as a Sentry tab on workloads):
+1. List all bindings.
+2. A binding applies to workload `<ns>/<kind>/<name>` if a target has `namespace == <ns>`,
+   and either no `kind`, or `kind` and `name` equal to the workload's. Workload targets are
+   more specific than namespace targets; prefer them when choosing one project to show.
+3. More than one project per workload is allowed.
+
+Consumers:
+- [`royal-road/trace-federator`](../../trace-federator/README.md) uses bindings to scope
+  Sentry trace data per user.
+- The planned console Sentry integration (issues per workload) can use the same bindings for
+  its workload → project mapping.
