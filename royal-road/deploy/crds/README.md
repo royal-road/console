@@ -87,10 +87,13 @@ spec:
       name: checkout             # required together with kind
 ```
 
-**Who can write it.** Only cluster-admins. No role grants this CRD, and none may aggregate
-into `admin`, `edit` or `view`. A binding decides who sees a project's data, so it must not
-be self-service. Readers get their own `list`/`watch` ClusterRole. The trace federator's is
-in [`../tracing/10-rbac.yaml`](../tracing/10-rbac.yaml).
+**Who can write it.** Directly, only cluster-admins. No role grants this CRD, and none may
+aggregate into `admin`, `edit` or `view`: a binding decides who sees a project's data. The
+one delegated path is sentry-plugin's link form (below): its backend writes bindings for a
+user who may `patch` the workload, only for projects already bound to the workload's
+namespace, unless the user may create bindings themselves. So an admin's namespace binding
+is what lets a namespace's editors link their workloads. Consumers get their own ClusterRole.
+The trace federator's is in [`../tracing/10-rbac.yaml`](../tracing/10-rbac.yaml).
 
 **What a binding grants.** A user may see a bound project, within the bound environments,
 if they can `get` at least one target:
@@ -111,5 +114,7 @@ of them has no `environments`, all environments are covered.
 Consumers:
 - [`royal-road/trace-federator`](../../trace-federator/README.md) uses bindings to scope
   Sentry trace data per user.
-- The planned console Sentry integration (issues per workload) can use the same bindings for
-  its workload → project mapping.
+- [sentry-plugin](https://github.com/royal-road/console-plugins/tree/main/plugins/sentry)
+  (royal-road/console-plugins) shows each workload's Sentry issues from its bindings and
+  links workloads through its link form. Linking a workload there makes its Sentry traces
+  visible to the workload's viewers here too.
