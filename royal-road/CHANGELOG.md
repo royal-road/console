@@ -8,6 +8,40 @@ Newest first. One entry per work package from `FORK.md`.
 - Core patch: off-cluster, the bridge's anonymous API client (user settings, Knative, auth metrics) ignored `--k8s-mode-off-cluster-skip-verify-tls` and failed with x509 errors. `rest.AnonymousClientConfig` drops a custom `Transport`, so the internal client config now sets `TLSClientConfig.Insecure` instead. `run-bridge.sh` no longer sets `SSL_CERT_FILE`, which Go ignores on macOS. Candidate for upstream.
 - Verified on kind 0.33.0 (Kubernetes 1.37.0, macOS, OrbStack): a fresh `kind-up.sh` and a re-run both leave 108 Helm release secrets; the unpatched bridge returns 502 `x509: "kube-apiserver" certificate is not trusted` for user settings, and the patched bridge reaches the API server; health, Kubernetes version, Helm releases and the main bundle work. On apple/container 1.7.1, `container cluster create` brings up the cluster (Kubernetes v1.35.5). Seeding and the bridge have not been checked against that cluster yet. The per-release Helm convergence in `seed-cluster.sh` and the cluster-state handling in `container-cluster-up.sh` were checked with stub `helm`, `kubectl` and `container` commands, not against a cluster.
 
+## Traces: federated trace stores and the distributed-tracing plugin
+
+- `royal-road/trace-federator/`: a standard-library Go service that serves the Tempo HTTP API across several trace stores:
+  - stores: Tempo-compatible (VictoriaTraces `/select/tempo`), SigNoz (v5 query API) and Sentry (span APIs);
+  - search: unioned by trace ID, newest first;
+  - trace by ID: merged, spans deduplicated by span ID by store priority, each resource tagged `federation.store`;
+  - tags and values: unioned;
+  - per-store timeouts, with partial results reported in `X-Federation-Status`;
+  - Prometheus metrics.
+
+  It also serves the plugin's backend API (`list-tempo-resources`, `/proxy/...`), so the plugin needs no Go backend. Unit tests cover the TraceQL subset parser, the SigNoz and Sentry translations, merging, timeouts and access scoping. `.github/workflows/royal-road-trace-federator.yml` pushes `ghcr.io/royal-road/trace-federator`.
+- Access control uses SelfSubjectAccessReviews with the user's forwarded token:
+  - per-store `get` on the virtual resource `traces.tracing.royalroad.com`;
+  - for Sentry, the new cluster-scoped CRD `SentryProjectBinding` (`royal-road/deploy/crds/observability.royalroad.com_sentryprojectbindings.yaml`). It links Sentry projects and environments to namespaces or workloads; users see a project if they can `get` a bound target. sentry-plugin (royal-road/console-plugins) uses the same bindings for its Sentry tab and writes them through its link form, so they are the one place that says which workload reports to which project.
+- `royal-road/plugins/distributed-tracing-console-plugin/` builds openshift/distributed-tracing-console-plugin `main` (pinned), frontend only, with one patch: the per-store status warning, preselecting the first instance, and a no-access empty state. `.github/workflows/royal-road-distributed-tracing-plugin.yml` pushes the image.
+- `royal-road/deploy/tracing/`: namespace, RBAC (`trace-reader`), config, Deployments, ConsolePlugin, NetworkPolicies, a `BRIDGE_PLUGIN_PROXY` helper, and an example binding.
+- Verified on kind against two VictoriaTraces instances, the real SigNoz and Sentry (read-only), and a dead store: a trace merged from four stores, the partial-result warning, and Sentry and store scoping for a limited user.
+
+## Kubernetes update hints on the Overview
+
+- Core patch: bridge flag `--kubernetes-release-info-url` (`BRIDGE_KUBERNETES_RELEASE_INFO_URL`, default empty: off, unchanged upstream behaviour). The bridge fetches an endoflife.date-style release list at start and every 12 hours (`pkg/kubernetesreleases`), keeps the last good copy on failure, and serves it normalised at `/api/console/kubernetes-releases` (404 when off, 503 before the first fetch). Go unit tests.
+- Core patch: the Overview Details card shows an "Update available" item under **Kubernetes version** with the latest patch of the cluster's minor, the latest release when its minor is newer, and the minor's end-of-life date, with a warning icon within 30 days of it and a danger icon after it. Hidden when the feature is off or the version can't be parsed. Jest tests.
+- `royal-road/deploy/console-deployment-patch.yaml` sets the URL to `https://endoflife.date/api/kubernetes.json`; `royal-road/deploy/README.md` ("Kubernetes update hints") covers egress and turning it off.
+
+## Sessions survive console rollouts
+
+- Core patch: bridge flag `--session-secret-namespace` (`BRIDGE_SESSION_SECRET_NAMESPACE`, `session.sessionSecretNamespace` in the config file; OIDC only). Each login session is written to its own Secret in that namespace and loaded from it on a memory miss, so a restart, rollout or another replica no longer signs users out. The Secret is authoritative: a login or token refresh reaches memory and cookies only after its Secret write succeeds, and a session without a Secret is logged out; replicas re-read it before refreshing a token, so a logout reaches them by their next refresh, and a refresh token cookie without its session cookie never refreshes. The Secret client has its own 50 QPS limit (client-go's default is 5). Within a Pod, loads, token updates and logouts of one session are serialised by a per-session lock, and API calls never hold the global session lock. The session cookie loses its Pod-name suffix when this is on. Unset, behaviour is unchanged.
+- `royal-road/deploy/session-store.yaml`: the `console-sessions` namespace and a Role for the console ServiceAccount; `console-deployment-patch.yaml` sets the env var. README "Session store" covers token storage, pruning, the one-time sign-out on the first rollout, and rollback.
+- Go tests with the fake clientset: restart, refresh-token lookup after restart, token rotation, logout (on another replica, replayed with only the refresh cookie, and racing a refresh or a cold load on the same Pod), failed Secret create, update and delete, concurrent refreshes on two replicas, a hung Secret update not blocking other users, pruning, cookie names, flag validation.
+
+## Fix: empty graphs on platform alert details
+
+- Observe › Alerting › alert details showed "No datapoints found" for most platform alerts although the query returned data. The graph drops series whose labels differ from the alert's. Platform rules set `prometheus: openshift-monitoring/k8s` (the plugin reads it for Source: Platform), while vmagent writes its own `prometheus` external label on every series. vmalert keeps the series' value on the alert as `exported_prometheus`. monitoring-plugin patch `0002-match-exported-labels-in-alert-graph.patch` also accepts a series whose label matches the alert's `exported_<label>`. With Prometheus, alerts carry no `exported_*` labels, so nothing changes there.
+
 ## Web Terminal on Kubernetes
 
 - `royal-road/deploy/web-terminal/` installs the DevWorkspace Operator (v1.1.0) and the Web Terminal Operator (1.18.0, the only public build) through OLM from their own index images, pinned by digest, with `installPlanApproval: Manual`. Neither is in the operatorhub.io catalog. cert-manager stands in for the OpenShift service CA. The README covers apply order, RBAC, resources and idle timeout, known issues and rollback.

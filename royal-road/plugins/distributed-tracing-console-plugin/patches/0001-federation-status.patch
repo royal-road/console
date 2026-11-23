@@ -1,0 +1,396 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kanadaj <kanadaj@royalroad.com>
+Date: Sun, 15 Nov 2026 00:25:01 +0000
+Subject: [PATCH] Show per-store results of the Royal Road trace federator
+
+---
+ ...n__distributed-tracing-console-plugin.json | 13 ++--
+ web/src/components/FederationStatusAlert.tsx  | 48 ++++++++++++
+ web/src/components/PersesWrapper.tsx          | 25 ++++++-
+ web/src/components/TempoInstanceDropdown.tsx  |  5 +-
+ web/src/federation.ts                         | 74 +++++++++++++++++++
+ .../pages/TraceDetailPage/TraceDetailPage.tsx |  2 +
+ web/src/pages/TracesPage/QueryBrowser.tsx     |  2 +
+ web/src/pages/TracesPage/TracesPage.tsx       | 71 +++---------------
+ 8 files changed, 166 insertions(+), 74 deletions(-)
+ create mode 100644 web/src/components/FederationStatusAlert.tsx
+ create mode 100644 web/src/federation.ts
+
+diff --git a/web/locales/en/plugin__distributed-tracing-console-plugin.json b/web/locales/en/plugin__distributed-tracing-console-plugin.json
+index 5e56a67..74c3285 100644
+--- a/web/locales/en/plugin__distributed-tracing-console-plugin.json
++++ b/web/locales/en/plugin__distributed-tracing-console-plugin.json
+@@ -1,4 +1,9 @@
+ {
++  "Results may be incomplete: some trace stores did not answer": "Results may be incomplete: some trace stores did not answer",
++  "Results shown come from: {{stores}}": "Results shown come from: {{stores}}",
++  "timed out": "timed out",
++  "cannot run this query": "cannot run this query",
++  "failed": "failed",
+   "No Tempo instance selected": "No Tempo instance selected",
+   "To explore data, select a Tempo instance and run a query.": "To explore data, select a Tempo instance and run a query.",
+   "Tempo instance": "Tempo instance",
+@@ -40,12 +45,8 @@
+   "Tempo operator isn't installed yet": "Tempo operator isn't installed yet",
+   "To get started, install the Tempo operator and create a TempoStack or TempoMonolithic instance with multi-tenancy enabled.": "To get started, install the Tempo operator and create a TempoStack or TempoMonolithic instance with multi-tenancy enabled.",
+   "Install Tempo operator": "Install Tempo operator",
+-  "No Tempo instances yet": "No Tempo instances yet",
+-  "To get started, create a TempoStack or TempoMonolithic instance with multi-tenancy enabled.<1></1>Instances without multi-tenancy are not supported.": "To get started, create a TempoStack or TempoMonolithic instance with multi-tenancy enabled.<1></1>Instances without multi-tenancy are not supported.",
+-  "Create a Tempo instance": "Create a Tempo instance",
+-  "Create a TempoStack instance": "Create a TempoStack instance",
+-  "Create a TempoMonolithic instance": "Create a TempoMonolithic instance",
+-  "View documentation": "View documentation",
++  "No trace stores available": "No trace stores available",
++  "You do not have access to any trace store. Ask a cluster administrator for access to traces.": "You do not have access to any trace store. Ask a cluster administrator for access to traces.",
+   "Error": "Error",
+   "Unknown error": "Unknown error",
+   "No results found": "No results found",
+diff --git a/web/src/components/FederationStatusAlert.tsx b/web/src/components/FederationStatusAlert.tsx
+new file mode 100644
+index 0000000..3c216a7
+--- /dev/null
++++ b/web/src/components/FederationStatusAlert.tsx
+@@ -0,0 +1,48 @@
++import { Alert, List, ListItem } from '@patternfly/react-core';
++import { useTranslation } from 'react-i18next';
++import { FederationRequestKind, isPartial, useFederationStatus } from '../federation';
++
++/**
++ * Royal Road: warns when some trace stores behind the federator did not
++ * contribute to the results on screen (timeout, error, unsupported query).
++ */
++export function FederationStatusAlert({ kind }: { kind: FederationRequestKind }) {
++  const { t } = useTranslation('plugin__distributed-tracing-console-plugin');
++  const statuses = useFederationStatus(kind);
++  const missing = (statuses ?? []).filter(isPartial);
++  if (missing.length === 0) {
++    return null;
++  }
++  const answered = (statuses ?? []).filter((s) => s.status === 'ok').map((s) => s.store);
++  return (
++    <Alert
++      variant="warning"
++      isInline
++      ouiaId="FederationPartialAlert"
++      title={t('Results may be incomplete: some trace stores did not answer')}
++    >
++      <List>
++        {missing.map((s) => (
++          <ListItem key={s.store}>
++            <strong>{s.store}</strong>: {statusText(s.status, t)}
++            {s.message ? ` (${s.message})` : ''}
++          </ListItem>
++        ))}
++      </List>
++      {answered.length > 0 && (
++        <p>{t('Results shown come from: {{stores}}', { stores: answered.join(', ') })}</p>
++      )}
++    </Alert>
++  );
++}
++
++function statusText(status: string, t: (s: string) => string) {
++  switch (status) {
++    case 'timeout':
++      return t('timed out');
++    case 'unsupported':
++      return t('cannot run this query');
++    default:
++      return t('failed');
++  }
++}
+diff --git a/web/src/components/PersesWrapper.tsx b/web/src/components/PersesWrapper.tsx
+index 44d65c5..6d0bca7 100644
+--- a/web/src/components/PersesWrapper.tsx
++++ b/web/src/components/PersesWrapper.tsx
+@@ -35,6 +35,7 @@ import * as tracingGanttChartPlugin from '@perses-dev/tracing-gantt-chart-plugin
+ import { ChartThemeColor, getThemeColors } from '@patternfly/react-charts/victory';
+ import { TempoInstance } from '../hooks/useTempoInstance';
+ import { getProxyURLFor } from '../hooks/api';
++import { federationFetchJson } from '../federation';
+ import { ErrorBoundary } from 'react-error-boundary';
+ import { ErrorAlert } from './ErrorAlert';
+ import { NoTempoInstanceSelectedState } from './NoTempoInstanceSelectedState';
+@@ -102,11 +103,27 @@ function toPluginRegistryModule(module: PersesPluginModule): Record<string, unkn
+ // PluginRegistry configuration to allow access to
+ // visualization panels/charts (@perses-dev/panels-plugin)
+ // and data handlers for tempo (@perses-dev/tempo-plugin).
++// Royal Road: the Tempo datasource's client records the trace federator's
++// per-store status header (see ../federation.ts).
++const federatedTempoPlugin = {
++  ...tempoPlugin,
++  TempoDatasource: {
++    ...tempoPlugin.TempoDatasource,
++    createClient: (...args: Parameters<typeof tempoPlugin.TempoDatasource.createClient>) =>
++      tempoPlugin.TempoDatasource.createClient(args[0], {
++        ...args[1],
++        fetchJson: federationFetchJson,
++      }),
++  },
++} as unknown as typeof tempoPlugin;
++
+ const pluginLoader = dynamicImportPluginLoader(
+-  [tempoPlugin, scatterChartPlugin, traceTablePlugin, tracingGanttChartPlugin].map((x) => ({
+-    resource: x.getPluginModule(),
+-    importPlugin: () => Promise.resolve(toPluginRegistryModule(x)),
+-  })),
++  [federatedTempoPlugin, scatterChartPlugin, traceTablePlugin, tracingGanttChartPlugin].map(
++    (x) => ({
++      resource: x.getPluginModule(),
++      importPlugin: () => Promise.resolve(toPluginRegistryModule(x)),
++    }),
++  ),
+ );
+ 
+ interface PersesWrapperProps {
+diff --git a/web/src/components/TempoInstanceDropdown.tsx b/web/src/components/TempoInstanceDropdown.tsx
+index 035117f..b491f4d 100644
+--- a/web/src/components/TempoInstanceDropdown.tsx
++++ b/web/src/components/TempoInstanceDropdown.tsx
+@@ -71,8 +71,9 @@ export const TempoInstanceDropdown = ({ tempo, setTempo }: TempoInstanceDropdown
+     }
+   };
+ 
+-  // Preselect the first instance if there is only one instance available.
+-  if (!selected && options.length === 1) {
++  // Preselect the first instance. Royal Road: the trace federator lists the
++  // view over all stores first.
++  if (!selected && options.length >= 1) {
+     onSelect(options[0].value);
+   }
+ 
+diff --git a/web/src/federation.ts b/web/src/federation.ts
+new file mode 100644
+index 0000000..c1e491a
+--- /dev/null
++++ b/web/src/federation.ts
+@@ -0,0 +1,74 @@
++import { useSyncExternalStore } from 'react';
++import { UserFriendlyError } from '@perses-dev/client';
++
++/**
++ * Royal Road: the trace federator answers every Tempo API call with an
++ * X-Federation-Status header, a JSON list of {store, status, message}. The
++ * Perses Tempo client drops response headers, so the plugin gives it this
++ * fetchJson, which records the header before decoding the body.
++ */
++export interface StoreStatus {
++  store: string;
++  status: 'ok' | 'skipped' | 'denied' | 'unsupported' | 'error' | 'timeout';
++  message?: string;
++}
++
++export type FederationRequestKind = 'search' | 'trace';
++
++const latest: Partial<Record<FederationRequestKind, StoreStatus[]>> = {};
++const listeners = new Set<() => void>();
++
++function kindOf(url: string): FederationRequestKind | undefined {
++  if (url.includes('/api/search?') || url.endsWith('/api/search')) return 'search';
++  if (url.includes('/api/v2/traces/')) return 'trace';
++  return undefined;
++}
++
++function record(url: string, header: string | null) {
++  const kind = kindOf(url);
++  if (!kind) return;
++  let statuses: StoreStatus[] = [];
++  try {
++    statuses = header ? (JSON.parse(header) as StoreStatus[]) : [];
++  } catch {
++    statuses = [];
++  }
++  latest[kind] = statuses;
++  listeners.forEach((l) => l());
++}
++
++/** Drop-in replacement for @perses-dev/client fetchJson. */
++export async function federationFetchJson<T>(
++  input: string | URL | Request,
++  init?: RequestInit,
++): Promise<T> {
++  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
++  const response = await globalThis.fetch(input, init);
++  record(url, response.headers.get('X-Federation-Status'));
++  if (!response.ok) {
++    let message = `${response.status} ${response.statusText}`;
++    try {
++      const body = await response.clone().json();
++      message = body.error ?? body.message ?? message;
++    } catch {
++      const text = await response.text();
++      if (text) message = text;
++    }
++    throw new UserFriendlyError(message, response.status);
++  }
++  return (await response.json()) as T;
++}
++
++function subscribe(listener: () => void) {
++  listeners.add(listener);
++  return () => listeners.delete(listener);
++}
++
++/** Store statuses of the latest search or trace request. */
++export function useFederationStatus(kind: FederationRequestKind): StoreStatus[] | undefined {
++  return useSyncExternalStore(subscribe, () => latest[kind]);
++}
++
++export function isPartial(s: StoreStatus) {
++  return s.status === 'error' || s.status === 'timeout' || s.status === 'unsupported';
++}
+diff --git a/web/src/pages/TraceDetailPage/TraceDetailPage.tsx b/web/src/pages/TraceDetailPage/TraceDetailPage.tsx
+index 26b60b6..1efed77 100644
+--- a/web/src/pages/TraceDetailPage/TraceDetailPage.tsx
++++ b/web/src/pages/TraceDetailPage/TraceDetailPage.tsx
+@@ -23,6 +23,7 @@ import { TracingApp } from '../../TracingApp';
+ import { linkToSpan, linkToTrace, spanAttributeLinks } from '../../links';
+ import { StringParam, useQueryParam } from 'use-query-params';
+ import './TraceDetailPage.css';
++import { FederationStatusAlert } from '../../components/FederationStatusAlert';
+ import { MagicIcon } from '@patternfly/react-icons';
+ import { dump as dumpYAML } from 'js-yaml';
+ import { useResolvedExtensions } from '@openshift-console/dynamic-plugin-sdk';
+@@ -68,6 +69,7 @@ function TraceDetailPageBody() {
+           <BreadcrumbItem isActive>{t('Trace details')}</BreadcrumbItem>
+         </Breadcrumb>
+         <PageTitle />
++        <FederationStatusAlert kind="trace" />
+         <Divider className="pf-v6-u-mt-md" />
+       </PageSection>
+       <PageSection
+diff --git a/web/src/pages/TracesPage/QueryBrowser.tsx b/web/src/pages/TracesPage/QueryBrowser.tsx
+index f6d449c..8130b79 100644
+--- a/web/src/pages/TracesPage/QueryBrowser.tsx
++++ b/web/src/pages/TracesPage/QueryBrowser.tsx
+@@ -15,6 +15,7 @@ import { useDataQueries, useTimeRange } from '@perses-dev/plugin-system';
+ import { FilterToolbar } from './Toolbar/FilterToolbar';
+ import { DEFAULT_LIMIT, LimitSelect } from './LimitSelect';
+ import { ClosableAlert } from '../../components/ClosableAlert';
++import { FederationStatusAlert } from '../../components/FederationStatusAlert';
+ 
+ export function QueryBrowser() {
+   return (
+@@ -98,6 +99,7 @@ function TraceSearchResults({ setQuery }: TraceSearchResultsProps) {
+ 
+   return (
+     <>
++      <FederationStatusAlert kind="search" />
+       {hasMoreResults && (
+         <ClosableAlert
+           variant="warning"
+diff --git a/web/src/pages/TracesPage/TracesPage.tsx b/web/src/pages/TracesPage/TracesPage.tsx
+index f8579c6..caa5d8d 100644
+--- a/web/src/pages/TracesPage/TracesPage.tsx
++++ b/web/src/pages/TracesPage/TracesPage.tsx
+@@ -1,21 +1,16 @@
+-import { useState } from 'react';
+ import { useTempoResources } from '../../hooks/useTempoResources';
+ import { QueryBrowser } from './QueryBrowser';
+ import {
+   Button,
+-  Dropdown,
+-  DropdownItem,
+-  DropdownList,
+   EmptyState,
+   EmptyStateActions,
+   EmptyStateBody,
+   EmptyStateFooter,
+-  MenuToggle,
+   PageSection,
+   Title,
+ } from '@patternfly/react-core';
+-import { PlusCircleIcon, WrenchIcon, ExternalLinkAltIcon } from '@patternfly/react-icons';
+-import { useTranslation, Trans } from 'react-i18next';
++import { LockIcon, WrenchIcon } from '@patternfly/react-icons';
++import { useTranslation } from 'react-i18next';
+ import { ErrorAlert } from '../../components/ErrorAlert';
+ import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
+ import { Link } from 'react-router';
+@@ -35,13 +30,6 @@ function getInstallOperatorLink() {
+   return '/operatorhub/all-namespaces?keyword=Tempo&details-item=tempo-product-redhat-operators-openshift-marketplace';
+ }
+ 
+-const createTempoStackLink =
+-  '/api-resource/all-namespaces/tempo.grafana.com~v1alpha1~TempoStack/instances';
+-const createTempoMonolithicLink =
+-  '/api-resource/all-namespaces/tempo.grafana.com~v1alpha1~TempoMonolithic/instances';
+-const viewInstallationDocsLink =
+-  'https://docs.redhat.com/en/documentation/openshift_container_platform/latest/html/distributed_tracing';
+-
+ function TracesPage() {
+   const { t } = useTranslation('plugin__distributed-tracing-console-plugin');
+ 
+@@ -123,9 +111,11 @@ function TempoOperatorNotInstalledState() {
+   );
+ }
+ 
++// Royal Road: instances come from the trace federator, which lists only the
++// trace stores the user may read. An empty list means no access, not "no
++// Tempo installed".
+ function NoTempoInstance() {
+   const { t } = useTranslation('plugin__distributed-tracing-console-plugin');
+-  const [isOpen, setOpen] = useState(false);
+ 
+   return (
+     <>
+@@ -133,55 +123,12 @@ function NoTempoInstance() {
+         <Title headingLevel="h1">{t('Traces')}</Title>
+       </PageSection>
+       <PageSection>
+-        <EmptyState titleText={t('No Tempo instances yet')} headingLevel="h4" icon={PlusCircleIcon}>
++        <EmptyState titleText={t('No trace stores available')} headingLevel="h4" icon={LockIcon}>
+           <EmptyStateBody>
+-            <Trans t={t}>
+-              To get started, create a TempoStack or TempoMonolithic instance with multi-tenancy
+-              enabled.
+-              <br />
+-              Instances without multi-tenancy are not supported.
+-            </Trans>
++            {t(
++              'You do not have access to any trace store. Ask a cluster administrator for access to traces.',
++            )}
+           </EmptyStateBody>
+-          <EmptyStateFooter>
+-            <EmptyStateActions>
+-              <Dropdown
+-                isOpen={isOpen}
+-                onOpenChange={setOpen}
+-                toggle={(toggleRef) => (
+-                  <MenuToggle
+-                    ref={toggleRef}
+-                    variant="primary"
+-                    onClick={() => setOpen(!isOpen)}
+-                    isExpanded={isOpen}
+-                  >
+-                    {t('Create a Tempo instance')}
+-                  </MenuToggle>
+-                )}
+-              >
+-                <DropdownList>
+-                  <DropdownItem key="createTempoStackLink" to={createTempoStackLink}>
+-                    {t('Create a TempoStack instance')}
+-                  </DropdownItem>
+-                  <DropdownItem key="createTempoMonolithicLink" to={createTempoMonolithicLink}>
+-                    {t('Create a TempoMonolithic instance')}
+-                  </DropdownItem>
+-                </DropdownList>
+-              </Dropdown>
+-            </EmptyStateActions>
+-            <EmptyStateActions>
+-              <Button
+-                variant="link"
+-                component="a"
+-                href={viewInstallationDocsLink}
+-                target="_blank"
+-                rel="noopener noreferrer"
+-                icon={<ExternalLinkAltIcon />}
+-                iconPosition="right"
+-              >
+-                {t('View documentation')}
+-              </Button>
+-            </EmptyStateActions>
+-          </EmptyStateFooter>
+         </EmptyState>
+       </PageSection>
+     </>

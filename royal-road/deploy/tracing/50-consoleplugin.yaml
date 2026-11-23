@@ -1,0 +1,27 @@
+# Lists the plugin on Administration > Dynamic Plugins. Display only:
+# BRIDGE_PLUGINS loads it and BRIDGE_PLUGIN_PROXY sets up the backend route.
+# Requires ../crds/90_consoleplugins.crd.yaml. The name must be
+# distributed-tracing-console-plugin: the plugin hard-codes
+# /api/proxy/plugin/distributed-tracing-console-plugin/backend.
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: distributed-tracing-console-plugin
+spec:
+  displayName: Distributed Tracing
+  backend:
+    type: Service
+    service:
+      name: distributed-tracing-console-plugin
+      namespace: tracing
+      port: 8080
+      basePath: /
+  proxy:
+    - alias: backend
+      authorization: UserToken
+      endpoint:
+        type: Service
+        service:
+          name: trace-federator
+          namespace: tracing
+          port: 8080

@@ -1,0 +1,7 @@
+# Namespace for the trace federator and the distributed-tracing console plugin.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracing
+  labels:
+    app.kubernetes.io/part-of: tracing
