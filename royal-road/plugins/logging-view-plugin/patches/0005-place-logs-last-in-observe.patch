@@ -1,0 +1,14 @@
+diff --git a/web/console-extensions.json b/web/console-extensions.json
+index e630504..0d703a0 100644
+--- a/web/console-extensions.json
++++ b/web/console-extensions.json
+@@ -14,7 +14,8 @@
+       "name": "Logs",
+       "href": "/monitoring/logs",
+       "perspective": "admin",
+-      "section": "observe"
++      "section": "observe",
++      "insertAfter": ["targets", "perses-dashboards", "metrics", "alerting", "observe-explorer"]
+     }
+   },
+   {
