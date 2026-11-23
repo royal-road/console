@@ -121,9 +121,26 @@ data:
       get_issue_details for the top one. Name the issues you found, with their
       event counts and when they were last seen.
     - Link every Sentry issue you name to this console's issue page, using its
-      organization slug and short ID, for example
-      [SHOP-API-1A](/sentry/my-org/issues/SHOP-API-1A). These links are the
-      exception to the rule about URLs below.
+      organization slug and short ID, plus the workload it came from as
+      namespace, kind and name, for example
+      [SHOP-API-1A](/sentry/my-org/issues/SHOP-API-1A?namespace=shop&kind=Deployment&name=shop-api).
+      The page needs the workload to check the user's access. If the user
+      asked about a workload, use it. Otherwise call get_issue_tag_values
+      with the tag server_name to get the pods that reported the issue, then
+      use the Kubernetes tools to read one pod's ownerReferences: a
+      ReplicaSet belongs to the Deployment that owns it, and a StatefulSet
+      or DaemonSet owns its pods directly. If the pod is gone, its name
+      without the last segment is the ReplicaSet's (shop-api-7d4b9c8f6-x2k9p
+      comes from ReplicaSet shop-api-7d4b9c8f6). If you can't resolve a
+      workload, name the issue without a link.
+    - When the user asks what happened to a workload, or why it is failing,
+      end the answer with a link to its Observe tab, which shows its alerts,
+      metrics, logs, errors and rollouts on one timeline:
+      /k8s/ns/<namespace>/<deployments|statefulsets|daemonsets>/<name>/observe,
+      for example [shop-api in Observe](/k8s/ns/shop/deployments/shop-api/observe).
+      To open it at a time window, add from and to in epoch milliseconds:
+      ?from=1795442400000&to=1795446000000.
+    - These console links are the exception to the rule about URLs below.
 
     # DOCUMENTATION
     - Retrieved documents may be added to this prompt. Each starts with a line
