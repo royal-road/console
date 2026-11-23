@@ -1,0 +1,100 @@
+diff --git a/web/src/features/metrics/pages/MetricsPage.tsx b/web/src/features/metrics/pages/MetricsPage.tsx
+index c8346cd..286f43e 100644
+--- a/web/src/features/metrics/pages/MetricsPage.tsx
++++ b/web/src/features/metrics/pages/MetricsPage.tsx
+@@ -107,6 +107,7 @@ import {
+   queryBrowserRunQueries,
+   queryBrowserSetAllExpanded,
+   queryBrowserSetPollInterval,
++  queryBrowserSetTimespan,
+   queryBrowserToggleAllSeries,
+   queryBrowserToggleIsEnabled,
+   queryBrowserToggleSeries,
+@@ -1060,12 +1061,39 @@ const QueryBrowserWrapper: FC<{
+   const queries = useSelector(
+     (state: MonitoringState) => getObserveState(plugin, state).queryBrowser?.queries,
+   );
++  const timespan = useSelector(
++    (state: MonitoringState) => getObserveState(plugin, state).queryBrowser.timespan,
++  );
++
++  // A fixed time window from the `from` and `to` URL parameters (epoch milliseconds), so links
++  // from other pages open at the right time. Zooming moves the window. Choosing a span in the
++  // graph controls stores it in `timespan` and returns to a live graph ending now.
++  const [timeWindow, setTimeWindow] = useState(() => parseTimeWindow(queryParams));
++
++  const onZoom = useCallback(
++    (from: number, to: number) => {
++      const zoomed = { from: Math.round(from), to: Math.round(to) };
++      setTimeWindow(zoomed);
++      dispatch(queryBrowserSetTimespan(zoomed.to - zoomed.from));
++    },
++    [dispatch],
++  );
++
++  useEffect(() => {
++    if (!isFirstRender && timeWindow && timespan !== timeWindow.to - timeWindow.from) {
++      setTimeWindow(undefined);
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [timespan]);
+ 
+   // Initialize queries from URL parameters on first render
+   useEffect(() => {
+     if (!isFirstRender) {
+       return;
+     }
++    if (timeWindow) {
++      dispatch(queryBrowserSetTimespan(timeWindow.to - timeWindow.from));
++    }
+     dispatch(queryBrowserDeleteAllQueries());
+     for (let i = 0; queryParams.has(`query${i}`); i++) {
+       const query = queryParams.get(`query${i}`);
+@@ -1079,7 +1107,7 @@ const QueryBrowserWrapper: FC<{
+       );
+     }
+     setFirstRenderFalse();
+-  }, [dispatch, queryParams, isFirstRender, setFirstRenderFalse]);
++  }, [dispatch, queryParams, isFirstRender, setFirstRenderFalse, timeWindow]);
+ 
+   /* eslint-disable react-hooks/exhaustive-deps */
+   // Use useMemo() to prevent these two arrays being recreated on every render, which would
+@@ -1107,8 +1135,15 @@ const QueryBrowserWrapper: FC<{
+     if (!newParams.get(QueryParams.Units)) {
+       newParams.set(QueryParams.Units, 'short');
+     }
++    if (timeWindow) {
++      newParams.set('from', String(timeWindow.from));
++      newParams.set('to', String(timeWindow.to));
++    } else {
++      newParams.delete('from');
++      newParams.delete('to');
++    }
+     setQueryParams(newParams, { replace: true });
+-  }, [queryStrings, customDataSourceName, isFirstRender, queryParams]);
++  }, [queryStrings, customDataSourceName, isFirstRender, queryParams, timeWindow]);
+ 
+   if (hideGraphs) {
+     return null;
+@@ -1176,10 +1211,21 @@ const QueryBrowserWrapper: FC<{
+       units={units}
+       showStackedControl
+       showDisconnectedControl
++      timespan={timeWindow && timeWindow.to - timeWindow.from}
++      fixedEndTime={timeWindow?.to}
++      onZoom={onZoom}
+     />
+   );
+ };
+ 
++const parseTimeWindow = (params: URLSearchParams): { from: number; to: number } | undefined => {
++  const from = Number(params.get('from'));
++  const to = Number(params.get('to'));
++  return Number.isInteger(from) && Number.isInteger(to) && from > 0 && from < to
++    ? { from, to }
++    : undefined;
++};
++
+ const removeQueryKeys = (searchParams: URLSearchParams): URLSearchParams => {
+   const newParams = new URLSearchParams(searchParams);
+   for (const key of searchParams.keys()) {
