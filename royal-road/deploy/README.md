@@ -398,8 +398,8 @@ the pinned `release-5.0` commit by
 3. Optional: apply `monitoring-dashboard-example.yaml` for a first dashboard.
 4. Roll out the console. Check that
    `https://<console-host>/api/plugins/monitoring-plugin/plugin-manifest.json`
-   returns JSON and that **Observe** lists Alerting, Metrics, Dashboards and
-   Targets.
+   returns JSON and that **Observe** lists Alerting, Metrics and Targets
+   (and Dashboards (Perses) with `monitoring-console-plugin`).
 
 **Plain HTTP.** The plugin backend serves HTTP on 9443 when it gets no
 `-cert`/`-key`. Only the bridge fetches the plugin, inside the cluster, and
@@ -437,6 +437,12 @@ non-admin user those requests fail. The stock console does the same; it is not
 caused by the plugin.
 
 ### Dashboards
+
+The Perses dashboards are the dashboards (see [Perses dashboards](#perses-dashboards)),
+so patch 0004 removes the legacy **Dashboards** item from the Observe menu.
+The legacy page still works at `/monitoring/dashboards` (and as the
+developer perspective's Observe › Dashboards tab) for old links and
+bookmarks. It reads ConfigMaps as follows.
 
 The bridge lists ConfigMaps in `openshift-config-managed` with label
 `console.openshift.io/dashboard=true`, using its own ServiceAccount (not the
@@ -684,7 +690,8 @@ Cluster Observability Operator (COO) installs it for a `UIPlugin` of type
 Monitoring with `perses.enabled`. Here the same pieces are plain manifests:
 `monitoring-console-plugin.yaml` and `perses/` (kustomize). The legacy
 Observe › Dashboards page (`monitoring-plugin`, ConfigMaps in
-`openshift-config-managed`) stays as it is.
+`openshift-config-managed`) keeps its route but has no menu item (patch 0004,
+see [Dashboards](#dashboards)).
 
 ### Versions
 

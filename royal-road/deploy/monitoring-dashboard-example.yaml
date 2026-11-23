@@ -1,5 +1,5 @@
-# Example legacy dashboard for Observe > Dashboards (monitoring-plugin,
-# feature "legacy-dashboards").
+# Example legacy dashboard for /monitoring/dashboards (monitoring-plugin,
+# feature "legacy-dashboards"; no Observe menu item since patch 0004).
 #
 # The bridge lists ConfigMaps in namespace openshift-config-managed with label
 # console.openshift.io/dashboard=true (/api/console/monitoring-dashboard-config),

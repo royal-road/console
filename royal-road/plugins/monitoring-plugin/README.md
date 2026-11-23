@@ -22,13 +22,14 @@ No public image of the `release-5.0` branch exists. Upstream's own Dockerfiles p
 
 ## Patches
 
-0001 and 0002 make the plugin work with VictoriaMetrics: 0001 for a vmalert API difference, 0002 for vmagent's external label clashing with our rule labels. 0003 lets observe-plugin (console-plugins, `plugins/observe/`) link into Metrics at a time window.
+0001 and 0002 make the plugin work with VictoriaMetrics: 0001 for a vmalert API difference, 0002 for vmagent's external label clashing with our rule labels. 0003 lets observe-plugin (console-plugins, `plugins/observe/`) link into Metrics at a time window. 0004 leaves the Perses dashboards as the only Dashboards item in the Observe menu.
 
 | Patch | Why |
 |---|---|
 | `0001-treat-missing-rule-alerts-as-empty.patch` | vmalert's rules API omits `alerts` on an inactive rule; Prometheus sends an empty list. Without the patch Observe › Alerting breaks. |
 | `0002-match-exported-labels-in-alert-graph.patch` | The alert details graph drops every series whose labels differ from the alert's. Our platform rules set `prometheus: openshift-monitoring/k8s` (the plugin reads that label to show Source: Platform), but vmagent labels every series with its own external label `prometheus=<namespace>/<vmagent name>`. vmalert keeps the series' value on the alert as `exported_prometheus`, so the patch accepts a series whose label matches the alert's `exported_<label>`. Without it the graph says "No datapoints found" on every platform alert whose query keeps the `prometheus` label, which is most of them. |
 | `0003-read-time-window-from-query-browser-url.patch` | Metrics (`/monitoring/query-browser`, and `/dev-monitoring/ns/<ns>/metrics`) keeps its time span only in Redux, so a link can't say when to look. The patch reads optional `from` and `to` URL parameters (epoch milliseconds) into the graph's span and end time: `?query0=<PromQL>&from=<ms>&to=<ms>`. The graph then stays on that window and doesn't poll. Zooming moves the window and writes it back to the URL; choosing a span in the graph controls drops `from`/`to` and returns to a live graph ending now. Without the parameters nothing changes. The query table below the graph still shows the current values, as upstream. |
+| `0004-hide-legacy-dashboards-nav-item.patch` | Removes the admin Observe › **Dashboards** menu item (legacy ConfigMap dashboards), so the menu has one Dashboards entry: Dashboards (Perses) from `monitoring-console-plugin`. The route `/monitoring/dashboards` and the developer perspective's Dashboards tab stay. Targets and Dashboards (Perses) were placed after the removed item, so the patch places Targets after Dashboards (Perses), or after Metrics when Perses isn't loaded, and fixes Metrics' anchor (`alerts` → `alerting`, the Alerting item's real id). The menu then reads Alerting, Metrics, Dashboards (Perses), Targets. |
 
 ## What the plugin needs at runtime
 
