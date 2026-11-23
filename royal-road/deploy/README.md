@@ -674,6 +674,100 @@ kind cluster with VictoriaLogs v1.53.0 (production's version), `logging-view-plu
 | Tenancy | A ServiceAccount with `view` in team-a (bridge run with its token, and directly at the proxy): only team-a, nothing in `infrastructure`, including with `{namespace="team-b"}` in the query, a client-sent `extra_stream_filters`, a `union` subquery, `stream_field_values` and an `AccountID` header. No token or an invalid token: 401. `query_time_range`: 404. Cluster-admin: all namespaces. |
 | NetworkPolicies | A pod in another namespace can't reach the proxy or VictoriaLogs; a pod with the console label reaches the proxy; the proxy reaches VictoriaLogs. |
 
+## Observe plugin
+
+observe-plugin ([royal-road/console-plugins](https://github.com/royal-road/console-plugins),
+`plugins/observe/`) joins the observability pages into one place to
+investigate a workload. Alerts, metrics, logs, Sentry errors and rollouts
+are scoped to the workload and share one time window, which travels in the
+URL (`from`/`to`). It adds:
+
+- **Observe › Overview** (`/observe`): the triage home, with workloads, their
+  health and firing alerts grouped by workload, and **Observe › Explorer**
+  (`/observe/explore`): search across workloads, pods, namespaces and alert
+  names.
+- An **Observe** tab on Deployments, StatefulSets, DaemonSets, Pods and
+  Namespaces (`/k8s/ns/<ns>/<plural>/<name>/observe`): golden signals with
+  rollout markers and alert bands, and a correlation timeline.
+- A **Logs** tab on Deployments, StatefulSets and DaemonSets (Pods keep
+  logging-view-plugin's Aggregated Logs tab).
+- **Investigate workload** and **Logs at alert time** on the alert details
+  page and in the alert list.
+
+It is static files only (`observe-plugin.yaml`, plain HTTP like the other
+static plugins) and reads data through the bridge with the user's own token:
+
+| Data | Through | Without it |
+|---|---|---|
+| Metrics and alerts | the bridge's monitoring proxies (`/api/prometheus`, `/api/prometheus-tenancy`), as monitoring-plugin | No golden signals or alerts |
+| Logs | logging-view-plugin's proxy, `/api/proxy/plugin/logging-view-plugin/backend/` (see [Logging plugin](#logging-plugin)) | Log panels can't load |
+| Sentry errors (optional) | sentry-plugin's backend, `/api/proxy/plugin/sentry-plugin/backend/` | Errors show "not connected" |
+
+So it needs no `BRIDGE_PLUGIN_PROXY` entry and no NetworkPolicy of its own.
+Its links into the other pages need the matching pieces from this fork:
+monitoring-plugin patches 0003 (Metrics opens at the link's `from`/`to`) and
+0004 (Observe › Dashboards lists only the Perses dashboards; see
+[Monitoring plugin](#monitoring-plugin)), and the console image whose
+topology side panel links to the Observe tab.
+
+### Observability plugins
+
+The full set, in `BRIDGE_PLUGINS` order:
+
+| Plugin | Built from | Manifests | `BRIDGE_PLUGINS` entry | Also needs |
+|---|---|---|---|---|
+| monitoring-plugin | `royal-road/plugins/monitoring-plugin/` | `monitoring-plugin.yaml` | `monitoring-plugin=http://monitoring-plugin.<console-namespace>.svc.cluster.local:9443/` | |
+| monitoring-console-plugin (Perses) | COO's image | `monitoring-console-plugin.yaml`, `perses/` | see [Perses dashboards](#perses-dashboards) | |
+| logging-view-plugin | `royal-road/plugins/logging-view-plugin/` | `logging-view-plugin.yaml` | `logging-view-plugin=http://logging-view-plugin.<console-namespace>.svc.cluster.local:9002/` | `BRIDGE_PLUGIN_PROXY` entry |
+| sentry-plugin | console-plugins `plugins/sentry/` | console-plugins `plugins/sentry/deploy/` | `sentry-plugin=http://sentry-plugin.<console-namespace>.svc.cluster.local:8080/` | `BRIDGE_PLUGIN_PROXY` entry from its `deploy/plugin-proxy-entry.sh`, `BRIDGE_I18N_NAMESPACES` `plugin__sentry-plugin`, a read-only Sentry token, cert-manager |
+| observe-plugin | console-plugins `plugins/observe/` | `observe-plugin.yaml` | `observe-plugin=http://observe-plugin.<console-namespace>.svc.cluster.local:8080/` | `BRIDGE_I18N_NAMESPACES` `plugin__observe-plugin` |
+
+sentry-plugin adds the Errors tab on workloads and the Sentry issue page
+(`/sentry/<org>/issues/<id>?namespace=&kind=&name=`). It maps a workload to
+a Sentry project with the `sentry.royalroad.com/project` annotation on the
+workload or its namespace; see its README.
+
+### Deploy
+
+Each step is safe on its own; nothing changes for users until step 4.
+
+1. **Logs.** Check that logging-view-plugin runs and its
+   `BRIDGE_PLUGIN_PROXY` entry is set ([Logging plugin](#logging-plugin)).
+2. **Errors (optional).** Deploy sentry-plugin from console-plugins
+   (`plugins/sentry/deploy/sentry-plugin.yaml` and its Secret) and wait for
+   it to be ready. Annotate the workloads or namespaces that report to
+   Sentry.
+3. **observe-plugin.** Replace the placeholders in
+   [`observe-plugin.yaml`](observe-plugin.yaml) and apply it. Apply the
+   `observe-plugin` ConsolePlugin from [`consoleplugins.yaml`](consoleplugins.yaml).
+   Wait for the Deployment to be ready. Nothing loads it yet.
+4. **Console.** Roll out the monitoring-plugin image and the console image
+   built from the same commit as these manifests, and append to the console
+   Deployment's env (keep the existing values):
+
+   ```yaml
+   - name: BRIDGE_PLUGINS
+     value: <existing>,sentry-plugin=http://sentry-plugin.<console-namespace>.svc.cluster.local:8080/,observe-plugin=http://observe-plugin.<console-namespace>.svc.cluster.local:8080/
+   - name: BRIDGE_I18N_NAMESPACES
+     value: <existing>,plugin__sentry-plugin,plugin__observe-plugin
+   ```
+
+   Leave out the sentry-plugin parts if you skipped step 2, and add its
+   `BRIDGE_PLUGIN_PROXY` entry if you didn't.
+5. **Verify.** `https://<console-host>/api/plugins/observe-plugin/plugin-manifest.json`
+   returns JSON. Observe › Overview lists workloads with their health. A
+   Deployment's Observe tab shows its golden signals, rollouts and logs, and
+   Errors if sentry-plugin runs. From an alert, **Investigate workload** opens
+   that tab at the alert's time. A Metrics link from the tab opens the query
+   browser at the same window. Topology › a Deployment › Observe ›
+   **Open Observe tab** opens the tab. Lightspeed's answers about a workload
+   link to it.
+
+**Rollback:** remove `observe-plugin` from `BRIDGE_PLUGINS` (and
+`BRIDGE_I18N_NAMESPACES`). The monitoring-plugin patches and the topology link
+can stay; without observe-plugin the topology link opens the workload page
+with a missing tab.
+
 ## Web Terminal
 
 Optional, applied separately from the cutover. [`web-terminal/`](web-terminal/README.md)
