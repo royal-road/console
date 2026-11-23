@@ -104,6 +104,14 @@ independent of the cutover above. See [`lightspeed/README.md`](lightspeed/README
 for the manifests, apply order, the `BRIDGE_PLUGINS` and
 `BRIDGE_PLUGIN_PROXY` values, and rollback.
 
+## Traces
+
+Observe › Traces (the distributed-tracing plugin) over VictoriaTraces, SigNoz and
+Sentry through `trace-federator` is a separate stack in the `tracing` namespace,
+independent of the cutover. See [`tracing/README.md`](tracing/README.md), and
+[`crds/README.md`](crds/README.md#sentryprojectbinding) for the
+`SentryProjectBinding` CRD that scopes Sentry data.
+
 ## Branding
 
 The masthead, the About modal, the browser tab title and the favicon show

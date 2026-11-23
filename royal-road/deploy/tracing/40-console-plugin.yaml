@@ -1,0 +1,60 @@
+# The distributed-tracing console plugin (Observe > Traces), built by
+# .github/workflows/royal-road-distributed-tracing-plugin.yml from
+# royal-road/plugins/distributed-tracing-console-plugin/. Static files only,
+# plain HTTP on 8080. Its API calls go browser -> bridge -> trace-federator.
+#
+# Replace <sha> with the image tag CI pushed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: distributed-tracing-console-plugin
+  namespace: tracing
+  labels:
+    app.kubernetes.io/name: distributed-tracing-console-plugin
+    app.kubernetes.io/part-of: tracing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: distributed-tracing-console-plugin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: distributed-tracing-console-plugin
+        app.kubernetes.io/part-of: tracing
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: plugin
+          image: ghcr.io/royal-road/distributed-tracing-console-plugin:<sha>
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /plugin-manifest.json, port: http}
+          resources:
+            requests: {cpu: 5m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: distributed-tracing-console-plugin
+  namespace: tracing
+  labels:
+    app.kubernetes.io/name: distributed-tracing-console-plugin
+spec:
+  selector:
+    app.kubernetes.io/name: distributed-tracing-console-plugin
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

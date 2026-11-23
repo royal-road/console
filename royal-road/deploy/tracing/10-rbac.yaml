@@ -1,0 +1,60 @@
+# trace-federator's own identity: it only lists SentryProjectBindings. Access
+# reviews are SelfSubjectAccessReviews made with the viewer's token, so no
+# tokenreviews/subjectaccessreviews permission is needed.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trace-federator
+  namespace: tracing
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trace-federator
+rules:
+  - apiGroups: [observability.royalroad.com]
+    resources: [sentryprojectbindings]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: trace-federator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: trace-federator
+subjects:
+  - kind: ServiceAccount
+    name: trace-federator
+    namespace: tracing
+---
+# Read access to the OTLP trace stores (backends with access "rbac"). The
+# resource is virtual: the federator checks `get` on
+# traces.tracing.royalroad.com with the backend name as resourceName; nothing
+# serves it. Bind this role to the groups that may see all traces in those
+# stores (traces are not reliably namespaced, so access is per store).
+# Sentry is not listed: Sentry access follows SentryProjectBindings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trace-reader
+rules:
+  - apiGroups: [tracing.royalroad.com]
+    resources: [traces]
+    resourceNames: [victoria, signoz]
+    verbs: [get]
+---
+# Example: let a group read the OTLP stores.
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRoleBinding
+# metadata:
+#   name: trace-reader-developers
+# roleRef:
+#   apiGroup: rbac.authorization.k8s.io
+#   kind: ClusterRole
+#   name: trace-reader
+# subjects:
+#   - kind: Group
+#     apiGroup: rbac.authorization.k8s.io
+#     name: <group>

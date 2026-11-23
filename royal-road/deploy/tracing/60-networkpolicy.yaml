@@ -1,0 +1,42 @@
+# Only the console (and the metrics scraper) may call the federator; the
+# plugin's static files only need the console. Egress stays open: the
+# federator calls VictoriaTraces, SigNoz, Sentry and the API server.
+# Adjust the namespace labels to where the console and the scraper run.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trace-federator
+  namespace: tracing
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trace-federator
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-console
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: <metrics-scraper-namespace>
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: distributed-tracing-console-plugin
+  namespace: tracing
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: distributed-tracing-console-plugin
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-console
+      ports:
+        - port: 8080
