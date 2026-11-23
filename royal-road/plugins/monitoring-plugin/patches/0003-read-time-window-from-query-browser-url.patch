@@ -1,100 +1,171 @@
 diff --git a/web/src/features/metrics/pages/MetricsPage.tsx b/web/src/features/metrics/pages/MetricsPage.tsx
-index c8346cd..286f43e 100644
+index c8346cd..94229d4 100644
 --- a/web/src/features/metrics/pages/MetricsPage.tsx
 +++ b/web/src/features/metrics/pages/MetricsPage.tsx
-@@ -107,6 +107,7 @@ import {
-   queryBrowserRunQueries,
-   queryBrowserSetAllExpanded,
-   queryBrowserSetPollInterval,
-+  queryBrowserSetTimespan,
-   queryBrowserToggleAllSeries,
-   queryBrowserToggleIsEnabled,
-   queryBrowserToggleSeries,
-@@ -1060,12 +1061,39 @@ const QueryBrowserWrapper: FC<{
-   const queries = useSelector(
+@@ -79,6 +79,7 @@ import { useDispatch, useSelector } from 'react-redux';
+ import { useSearchParams } from 'react-router';
+ import { StringParam, useQueryParam } from 'use-query-params';
+ 
++import { parseTimeWindow } from '@/features/metrics/utils/time-window';
+ import { DropDownPollInterval } from '@/shared/components/DropdownPollInterval';
+ import KebabDropdown from '@/shared/components/KebabDropdown';
+ import { colors, Error, QueryBrowser } from '@/shared/components/query-browser/QueryBrowser';
+@@ -1061,6 +1062,36 @@ const QueryBrowserWrapper: FC<{
      (state: MonitoringState) => getObserveState(plugin, state).queryBrowser?.queries,
    );
-+  const timespan = useSelector(
-+    (state: MonitoringState) => getObserveState(plugin, state).queryBrowser.timespan,
-+  );
-+
-+  // A fixed time window from the `from` and `to` URL parameters (epoch milliseconds), so links
-+  // from other pages open at the right time. Zooming moves the window. Choosing a span in the
-+  // graph controls stores it in `timespan` and returns to a live graph ending now.
-+  const [timeWindow, setTimeWindow] = useState(() => parseTimeWindow(queryParams));
+ 
++  // The `from` and `to` URL parameters (epoch milliseconds) fix the graph on a time window, so
++  // links from other pages open at the right time. A zoom pushes the zoomed window, so Back undoes
++  // it. Choosing a span in the graph controls drops the window and returns to a live graph.
++  const timeWindow = parseTimeWindow(queryParams);
 +
 +  const onZoom = useCallback(
-+    (from: number, to: number) => {
-+      const zoomed = { from: Math.round(from), to: Math.round(to) };
-+      setTimeWindow(zoomed);
-+      dispatch(queryBrowserSetTimespan(zoomed.to - zoomed.from));
-+    },
-+    [dispatch],
++    (from: number, to: number) =>
++      setQueryParams((params) => {
++        const next = new URLSearchParams(params);
++        next.set('from', String(Math.round(from)));
++        next.set('to', String(Math.round(to)));
++        return next;
++      }),
++    [setQueryParams],
 +  );
 +
-+  useEffect(() => {
-+    if (!isFirstRender && timeWindow && timespan !== timeWindow.to - timeWindow.from) {
-+      setTimeWindow(undefined);
-+    }
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [timespan]);
- 
++  const onSpanChange = useCallback(
++    () =>
++      setQueryParams(
++        (params) => {
++          const next = new URLSearchParams(params);
++          next.delete('from');
++          next.delete('to');
++          return next;
++        },
++        { replace: true },
++      ),
++    [setQueryParams],
++  );
++
    // Initialize queries from URL parameters on first render
    useEffect(() => {
      if (!isFirstRender) {
-       return;
-     }
-+    if (timeWindow) {
-+      dispatch(queryBrowserSetTimespan(timeWindow.to - timeWindow.from));
-+    }
-     dispatch(queryBrowserDeleteAllQueries());
-     for (let i = 0; queryParams.has(`query${i}`); i++) {
-       const query = queryParams.get(`query${i}`);
-@@ -1079,7 +1107,7 @@ const QueryBrowserWrapper: FC<{
-       );
-     }
-     setFirstRenderFalse();
--  }, [dispatch, queryParams, isFirstRender, setFirstRenderFalse]);
-+  }, [dispatch, queryParams, isFirstRender, setFirstRenderFalse, timeWindow]);
- 
-   /* eslint-disable react-hooks/exhaustive-deps */
-   // Use useMemo() to prevent these two arrays being recreated on every render, which would
-@@ -1107,8 +1135,15 @@ const QueryBrowserWrapper: FC<{
-     if (!newParams.get(QueryParams.Units)) {
-       newParams.set(QueryParams.Units, 'short');
-     }
-+    if (timeWindow) {
-+      newParams.set('from', String(timeWindow.from));
-+      newParams.set('to', String(timeWindow.to));
-+    } else {
-+      newParams.delete('from');
-+      newParams.delete('to');
-+    }
-     setQueryParams(newParams, { replace: true });
--  }, [queryStrings, customDataSourceName, isFirstRender, queryParams]);
-+  }, [queryStrings, customDataSourceName, isFirstRender, queryParams, timeWindow]);
- 
-   if (hideGraphs) {
-     return null;
-@@ -1176,10 +1211,21 @@ const QueryBrowserWrapper: FC<{
+@@ -1176,6 +1207,10 @@ const QueryBrowserWrapper: FC<{
        units={units}
        showStackedControl
        showDisconnectedControl
 +      timespan={timeWindow && timeWindow.to - timeWindow.from}
 +      fixedEndTime={timeWindow?.to}
++      onSpanChange={onSpanChange}
 +      onZoom={onZoom}
      />
    );
  };
- 
-+const parseTimeWindow = (params: URLSearchParams): { from: number; to: number } | undefined => {
+diff --git a/web/src/features/metrics/utils/time-window.spec.ts b/web/src/features/metrics/utils/time-window.spec.ts
+new file mode 100644
+index 0000000..7234a69
+--- /dev/null
++++ b/web/src/features/metrics/utils/time-window.spec.ts
+@@ -0,0 +1,21 @@
++import { parseTimeWindow } from '@/features/metrics/utils/time-window';
++
++describe('parseTimeWindow', () => {
++  it('reads from and to as epoch milliseconds', () => {
++    const params = new URLSearchParams('query0=up&from=1795442400000&to=1795446000000');
++    expect(parseTimeWindow(params)).toEqual({ from: 1795442400000, to: 1795446000000 });
++  });
++
++  it.each([
++    ['no parameters', ''],
++    ['only from', 'from=1795442400000'],
++    ['only to', 'to=1795446000000'],
++    ['a non-integer value', 'from=1795442400000.5&to=1795446000000'],
++    ['a non-numeric value', 'from=now-1h&to=now'],
++    ['a zero from', 'from=0&to=1795446000000'],
++    ['an empty window', 'from=1795446000000&to=1795446000000'],
++    ['a reversed window', 'from=1795446000000&to=1795442400000'],
++  ])('ignores %s', (_name, search) => {
++    expect(parseTimeWindow(new URLSearchParams(search))).toBeUndefined();
++  });
++});
+diff --git a/web/src/features/metrics/utils/time-window.ts b/web/src/features/metrics/utils/time-window.ts
+new file mode 100644
+index 0000000..77ba321
+--- /dev/null
++++ b/web/src/features/metrics/utils/time-window.ts
+@@ -0,0 +1,11 @@
++export type TimeWindow = { from: number; to: number };
++
++// Reads the `from` and `to` URL parameters (epoch milliseconds). Returns undefined unless both are
++// positive integers with `from` before `to`.
++export const parseTimeWindow = (params: URLSearchParams): TimeWindow | undefined => {
 +  const from = Number(params.get('from'));
 +  const to = Number(params.get('to'));
 +  return Number.isInteger(from) && Number.isInteger(to) && from > 0 && from < to
 +    ? { from, to }
 +    : undefined;
 +};
-+
- const removeQueryKeys = (searchParams: URLSearchParams): URLSearchParams => {
-   const newParams = new URLSearchParams(searchParams);
-   for (const key of searchParams.keys()) {
+diff --git a/web/src/shared/components/query-browser/QueryBrowser.tsx b/web/src/shared/components/query-browser/QueryBrowser.tsx
+index c95c062..2ec6b0c 100644
+--- a/web/src/shared/components/query-browser/QueryBrowser.tsx
++++ b/web/src/shared/components/query-browser/QueryBrowser.tsx
+@@ -120,7 +120,7 @@ const GraphEmptyState: FC<GraphEmptyStateProps> = ({ children, title }) => (
+ );
+ 
+ const SpanControls = memo(
+-  ({ defaultSpanText, onChange, span, hasReducedResolution }: SpanControlsProps) => {
++  ({ defaultSpanText, isFixedRange, onChange, span, hasReducedResolution }: SpanControlsProps) => {
+     const { t } = useTranslation(process.env.I18N_NAMESPACE);
+ 
+     const [isValid, setIsValid] = useState(true);
+@@ -140,7 +140,8 @@ const SpanControls = memo(
+       const newIsValid = newSpan > 0;
+       setIsValid(newIsValid);
+       setText(newText);
+-      if (newIsValid && newSpan !== span) {
++      // On a fixed or zoomed range, choosing the same span still returns the graph to live
++      if (newIsValid && (newSpan !== span || isFixedRange)) {
+         const fn = isDebounced ? debouncedOnChange : onChange;
+         fn(newSpan);
+       }
+@@ -598,6 +599,7 @@ const QueryBrowser_: FC<QueryBrowserProps> = ({
+   hideControls,
+   isStack = false,
+   onLoadingChange,
++  onSpanChange: notifySpanChange,
+   onZoom,
+   pollInterval,
+   queries,
+@@ -890,8 +892,9 @@ const QueryBrowser_: FC<QueryBrowserProps> = ({
+       setSpan(newSpan);
+       dispatch(queryBrowserSetTimespan(newSpan));
+       setSamples(defaultSamples || getMaxSamplesForSpan(newSpan));
++      notifySpanChange?.(newSpan);
+     },
+-    [defaultSamples, dispatch],
++    [defaultSamples, dispatch, notifySpanChange],
+   );
+ 
+   const isRangeVector = _.get(error, 'json.error', '').match(
+@@ -961,6 +964,7 @@ const QueryBrowser_: FC<QueryBrowserProps> = ({
+               <SplitItem>
+                 <SpanControls
+                   defaultSpanText={defaultSpanText}
++                  isFixedRange={!!xDomain}
+                   onChange={onSpanChange}
+                   span={span}
+                   hasReducedResolution={hasReducedResolution}
+@@ -1127,6 +1131,8 @@ export type QueryBrowserProps = {
+   hideControls?: boolean;
+   isStack?: boolean;
+   onLoadingChange?: (isLoading: boolean) => void;
++  // Called when the user chooses a span in the graph controls (not on zoom)
++  onSpanChange?: (span: number) => void;
+   onZoom?: GraphOnZoom;
+   pollInterval?: number;
+   queries: string[];
+@@ -1142,6 +1148,7 @@ export type QueryBrowserProps = {
+ 
+ type SpanControlsProps = {
+   defaultSpanText: string;
++  isFixedRange: boolean;
+   onChange: (span: number) => void;
+   span: number;
+   hasReducedResolution: boolean;
