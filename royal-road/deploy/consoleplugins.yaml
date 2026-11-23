@@ -10,9 +10,9 @@
 # listed as Disabled.
 #
 # Requires crds/90_consoleplugins.crd.yaml. Replace <console-namespace> with
-# the console's namespace (the Services from networking-console-plugin.yaml
-# and monitoring-plugin.yaml). The metadata.name must equal the plugin name in
-# BRIDGE_PLUGINS.
+# the console's namespace (the Services from networking-console-plugin.yaml,
+# monitoring-plugin.yaml and observe-plugin.yaml). The metadata.name must equal
+# the plugin name in BRIDGE_PLUGINS.
 apiVersion: console.openshift.io/v1
 kind: ConsolePlugin
 metadata:
@@ -65,3 +65,19 @@ spec:
           name: perses
           namespace: perses
           port: 8080
+---
+# Observe › Overview and Explorer, and the workload Observe and Logs tabs (see
+# README.md, "Observe plugin").
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: observe-plugin
+spec:
+  displayName: Observe
+  backend:
+    type: Service
+    service:
+      name: observe-plugin
+      namespace: <console-namespace>
+      port: 8080
+      basePath: /

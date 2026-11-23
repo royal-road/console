@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
   Accordion,
   AccordionItem,
@@ -15,11 +15,12 @@ import { RhStandardInfoIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import type { Alert } from '@console/dynamic-plugin-sdk';
-import { useActivePerspective } from '@console/dynamic-plugin-sdk';
 import { sortEvents } from '@console/internal/components/events';
 import { LoadingBox } from '@console/internal/components/utils';
+import { resourceObjPath } from '@console/internal/components/utils/resource-link';
 import { DeploymentConfigModel } from '@console/internal/models';
 import type { K8sResourceKind, EventKind, PodKind } from '@console/internal/module/k8s';
+import { referenceFor } from '@console/internal/module/k8s';
 import { getFiringAlerts } from '@console/shared/src/utils/alert-utils';
 import WorkloadGraphs from './MonitoringMetrics';
 import MonitoringOverviewAlerts from './MonitoringOverviewAlerts';
@@ -40,26 +41,14 @@ type MonitoringOverviewProps = {
 const MonitoringOverview: FC<MonitoringOverviewProps> = (props) => {
   const { t } = useTranslation('devconsole');
   const { resource, pods, resourceEvents, monitoringAlerts } = props;
-  const [perspective] = useActivePerspective();
   const firingAlerts = getFiringAlerts(monitoringAlerts);
   const [expanded, setExpanded] = useState([
     'metrics',
     ...(firingAlerts.length > 0 ? ['monitoring-alerts'] : []),
   ]);
 
-  const resourceLink = useMemo(() => {
-    const params = new URLSearchParams({
-      namespace: resource?.metadata?.namespace,
-      type: resource?.kind?.toLowerCase(),
-    });
-
-    if (perspective === 'dev') {
-      params.set('dashboard', 'dashboard-k8s-resources-workloads-namespace');
-      return `/dev-monitoring/ns/${resource?.metadata?.namespace}?${params.toString()}`;
-    }
-
-    return `/monitoring/dashboards/dashboard-k8s-resources-workloads-namespace?${params.toString()}`;
-  }, [resource, perspective]);
+  // The Observe tab that observe-plugin adds to workloads.
+  const observeTabLink = `${resourceObjPath(resource, referenceFor(resource))}/observe`;
 
   if (
     !resourceEvents ||
@@ -149,8 +138,8 @@ const MonitoringOverview: FC<MonitoringOverviewProps> = (props) => {
             ) : (
               <>
                 <div className="odc-monitoring-overview__view-monitoring-dashboards">
-                  <Link to={resourceLink} data-test="observe-dashboards-link">
-                    {t('View dashboards')}
+                  <Link to={observeTabLink} data-test="observe-dashboards-link">
+                    {t('Open Observe tab')}
                   </Link>
                 </div>
                 <WorkloadGraphs resource={resource} />

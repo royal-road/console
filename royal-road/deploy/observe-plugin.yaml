@@ -1,0 +1,89 @@
+# observe-plugin (royal-road/console-plugins, plugins/observe/) for the Royal
+# Road console: Observe › Overview and Explorer, and an Observe and a Logs tab
+# on workloads, with alerts, metrics, logs, Sentry errors and rollouts on one
+# time window. See README.md, "Observe plugin".
+#
+# Placeholders:
+#   <console-namespace>  namespace of the console Deployment
+#   <sha>                image tag from console-plugins' .github/workflows/observe-plugin.yml
+#
+# The plugin is static files only. It reads data through the bridge with the
+# signed-in user's token: the monitoring proxies, logging-view-plugin's proxy
+# and, if deployed, sentry-plugin's backend. So it needs no ServiceAccount
+# permissions, no BRIDGE_PLUGIN_PROXY entry and no NetworkPolicy of its own.
+#
+# Plain HTTP inside the cluster, like networking-console-plugin.yaml: only the
+# bridge fetches these files, and browsers get them over the console's HTTPS.
+#
+# Load it in the console Deployment. Both variables are comma-separated lists;
+# append to the existing values instead of replacing them:
+#   - name: BRIDGE_PLUGINS
+#     value: <existing>,observe-plugin=http://observe-plugin.<console-namespace>.svc.cluster.local:8080/
+#   - name: BRIDGE_I18N_NAMESPACES
+#     value: <existing>,plugin__observe-plugin
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observe-plugin
+  namespace: <console-namespace>
+  labels:
+    app.kubernetes.io/name: observe-plugin
+    app.kubernetes.io/part-of: console
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: observe-plugin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: observe-plugin
+        app.kubernetes.io/part-of: console
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: observe-plugin
+          image: ghcr.io/royal-road/observe-plugin:<sha>
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: http
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observe-plugin
+  namespace: <console-namespace>
+  labels:
+    app.kubernetes.io/name: observe-plugin
+    app.kubernetes.io/part-of: console
+spec:
+  selector:
+    app.kubernetes.io/name: observe-plugin
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
