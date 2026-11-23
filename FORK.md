@@ -81,6 +81,7 @@ The production cluster is not available. Build a local stand-in:
 - Install the Rook CRDs (CRDs only, no operator) so storage-related flags behave as in production.
 - Install a few Helm releases with several upgrades each, so `superseded` revisions exist.
 - Run the bridge off-cluster against kind, following `README.md` ("Native Kubernetes"/off-cluster sections), with `BRIDGE_USER_AUTH=disabled` and a cluster-admin ServiceAccount token. Run plugins with their dev servers or containers, and add them with `--plugins name=http://host:port/`.
+- On macOS, `royal-road/dev/container-cluster-up.sh` builds the same environment with Apple's `container cluster` (apple/container 1.7.1 or later), and `DEV_CLUSTER=container-cluster` points `royal-road/dev/run-bridge.sh` at it.
 - Optional, for Observe testing: add a Prometheus-compatible endpoint to kind and point `--k8s-mode-off-cluster-thanos` and `--k8s-mode-off-cluster-alertmanager` at it.
 
 Every work package's acceptance criteria are checked in this environment. Record what you verified, and how, in the PR description or commit body.

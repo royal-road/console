@@ -2,6 +2,12 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Dev cluster on Apple containers
+
+- `royal-road/dev/container-cluster-up.sh` builds the verification cluster on macOS with Apple's `container cluster` (apple/container 1.7.1, kubeadm on the plugin's default `kindest/node` v1.35.5 image; kind's v1.36.4 and v1.37.0 images fail `kubeadm init` under the plugin), and `DEV_CLUSTER=container-cluster` points `run-bridge.sh` at it. A stopped cluster cannot be restarted, so after a reboot the script deletes it, creates it again and seeds it. `seed-cluster.sh` now holds the CRDs, the `console-dev` ServiceAccount and the Helm releases, so `kind-up.sh` and `container-cluster-up.sh` seed the same cluster contents.
+- Core patch: off-cluster, the bridge's anonymous API client (user settings, Knative, auth metrics) ignored `--k8s-mode-off-cluster-skip-verify-tls` and failed with x509 errors. `rest.AnonymousClientConfig` drops a custom `Transport`, so the internal client config now sets `TLSClientConfig.Insecure` instead. `run-bridge.sh` no longer sets `SSL_CERT_FILE`, which Go ignores on macOS. Candidate for upstream.
+- Verified on kind 0.33.0 (Kubernetes 1.37.0, macOS, OrbStack): a fresh `kind-up.sh` and a re-run both leave 108 Helm release secrets; the unpatched bridge returns 502 `x509: "kube-apiserver" certificate is not trusted` for user settings, and the patched bridge reaches the API server; health, Kubernetes version, Helm releases and the main bundle work. On apple/container 1.7.1, `container cluster create` brings up the cluster (Kubernetes v1.35.5). Seeding and the bridge have not been checked against that cluster yet. The per-release Helm convergence in `seed-cluster.sh` and the cluster-state handling in `container-cluster-up.sh` were checked with stub `helm`, `kubectl` and `container` commands, not against a cluster.
+
 ## Web Terminal on Kubernetes
 
 - `royal-road/deploy/web-terminal/` installs the DevWorkspace Operator (v1.1.0) and the Web Terminal Operator (1.18.0, the only public build) through OLM from their own index images, pinned by digest, with `installPlanApproval: Manual`. Neither is in the operatorhub.io catalog. cert-manager stands in for the OpenShift service CA. The README covers apply order, RBAC, resources and idle timeout, known issues and rollback.
