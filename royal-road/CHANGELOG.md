@@ -2,6 +2,16 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Unified Observe
+
+- observe-plugin (royal-road/console-plugins, `plugins/observe/`) turns the separate observability pages into one place to investigate a workload: Observe › Overview and Explorer, an Observe tab on Deployments, StatefulSets, DaemonSets, Pods and Namespaces, a Logs tab on Deployments, StatefulSets and DaemonSets, and alert actions. Alerts, metrics, logs, Sentry errors and rollouts are scoped to the workload and share one time window carried in the URL (`from`/`to`). This fork carries the pieces around it.
+- monitoring-plugin patch `0003-read-time-window-from-query-browser-url.patch`: Metrics (admin and developer) reads optional `from`/`to` (epoch ms) into the graph's span and end time, so links open at the incident's window. Zooming writes the window back to the URL; choosing a span returns to the live graph. Without the parameters nothing changes.
+- monitoring-plugin patch `0004-hide-legacy-dashboards-nav-item.patch`: the legacy Observe › Dashboards menu item is gone (the route stays), so Dashboards (Perses) is the only Dashboards entry. Targets and Metrics get anchors that keep the menu in order: Alerting, Metrics, Dashboards (Perses), Targets.
+- Core patch: the topology side panel's Observe section links to the workload's Observe tab ("Open Observe tab", `/k8s/ns/<ns>/<plural>/<name>/observe`) instead of the legacy dashboard `dashboard-k8s-resources-workloads-namespace`, which this cluster doesn't have.
+- `royal-road/deploy/observe-plugin.yaml` (static plugin, plain HTTP 8080) and its ConsolePlugin in `consoleplugins.yaml`. README "Observe plugin": what it adds, the proxies it reads through (logging-view-plugin's required, sentry-plugin's backend optional), the observability plugin set with `BRIDGE_PLUGINS` entries (sentry-plugin now listed), deploy order and rollback.
+- Lightspeed: Sentry issue links carry the workload (`?namespace=&kind=&name=`), taken from the question or resolved from the issue's `server_name` pod to its owner with the Kubernetes tools; answers about a workload link to its Observe tab.
+- Verified: all four monitoring-plugin patches apply to the pinned commit and the image builds (`docker build`); `tsc --noEmit`, ESLint and the Go tests pass on the patched source. In the browser (bridge off-cluster against kube-apiserver v1.36.6, Prometheus, the patched plugin and monitoring-console-plugin v1.0.0), Metrics with `from`/`to` queried exactly that range and did not poll, zoom updated the URL and survived a reload, a span change returned to live, the developer Metrics page did the same, and the Observe menu read as above with and without Perses; `/monitoring/dashboards` still opens. Jest covers the topology link for each workload kind. The manifests pass `kubectl apply --dry-run=server`.
+
 ## Traces: federated trace stores and the distributed-tracing plugin
 
 - `royal-road/trace-federator/`: a standard-library Go service that serves the Tempo HTTP API across several trace stores:
