@@ -13,6 +13,24 @@ Newest first. One entry per work package from `FORK.md`.
 - `NamespaceBar` is public dynamic plugin SDK API (`core-api.ts`). Its export and props are unchanged; bars that plugins render now register with the dialog too, so the dialog calls their `onNamespaceChange` as well.
 - Known limits: namespaces load when the dialog opens. In the browser, Enter pressed right after typing a namespace name once did nothing and worked on the second press; loading is the likely cause, not confirmed. Tab moves focus into the result list, and the highlighted result does not set `aria-selected`. Favorites from the sidebar are not searched. On a page whose handler navigates, such as Helm, one choice can add two identical history entries; the namespace dropdown calls the handler and then sets the namespace in the same order, so it adds them too. Topology and Helm forms keep a `project-name` query after a choice, because their handlers build the URL from the query they read before the palette removed it; the dropdown removes it last and, judging from its code (not tested), returns to the previous path there instead. The browser checks above ran before the last three review fixes (group order, layout-effect registration, hidden modals), which Jest covers.
 
+## Traces: federated trace stores and the distributed-tracing plugin
+
+- `royal-road/trace-federator/`: a standard-library Go service that serves the Tempo HTTP API across several trace stores:
+  - stores: Tempo-compatible (VictoriaTraces `/select/tempo`), SigNoz (v5 query API) and Sentry (span APIs);
+  - search: unioned by trace ID, newest first;
+  - trace by ID: merged, spans deduplicated by span ID by store priority, each resource tagged `federation.store`;
+  - tags and values: unioned;
+  - per-store timeouts, with partial results reported in `X-Federation-Status`;
+  - Prometheus metrics.
+
+  It also serves the plugin's backend API (`list-tempo-resources`, `/proxy/...`), so the plugin needs no Go backend. Unit tests cover the TraceQL subset parser, the SigNoz and Sentry translations, merging, timeouts and access scoping. `.github/workflows/royal-road-trace-federator.yml` pushes `ghcr.io/royal-road/trace-federator`.
+- Access control uses SelfSubjectAccessReviews with the user's forwarded token:
+  - per-store `get` on the virtual resource `traces.tracing.royalroad.com`;
+  - for Sentry, the new cluster-scoped CRD `SentryProjectBinding` (`royal-road/deploy/crds/observability.royalroad.com_sentryprojectbindings.yaml`). It links Sentry projects and environments to namespaces or workloads; users see a project if they can `get` a bound target. sentry-plugin (royal-road/console-plugins) uses the same bindings for its Sentry tab and writes them through its link form, so they are the one place that says which workload reports to which project.
+- `royal-road/plugins/distributed-tracing-console-plugin/` builds openshift/distributed-tracing-console-plugin `main` (pinned), frontend only, with one patch: the per-store status warning, preselecting the first instance, and a no-access empty state. `.github/workflows/royal-road-distributed-tracing-plugin.yml` pushes the image.
+- `royal-road/deploy/tracing/`: namespace, RBAC (`trace-reader`), config, Deployments, ConsolePlugin, NetworkPolicies, a `BRIDGE_PLUGIN_PROXY` helper, and an example binding.
+- Verified on kind against two VictoriaTraces instances, the real SigNoz and Sentry (read-only), and a dead store: a trace merged from four stores, the partial-result warning, and Sentry and store scoping for a limited user.
+
 ## Kubernetes update hints on the Overview
 
 - Core patch: bridge flag `--kubernetes-release-info-url` (`BRIDGE_KUBERNETES_RELEASE_INFO_URL`, default empty: off, unchanged upstream behaviour). The bridge fetches an endoflife.date-style release list at start and every 12 hours (`pkg/kubernetesreleases`), keeps the last good copy on failure, and serves it normalised at `/api/console/kubernetes-releases` (404 when off, 503 before the first fetch). Go unit tests.
