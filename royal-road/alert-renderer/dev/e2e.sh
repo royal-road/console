@@ -29,6 +29,7 @@ start ok 18901
 start reject-images 18902
 start rate-limit 18903
 start down 18904
+start slow 18905
 sleep 1
 
 fails=0
@@ -53,13 +54,27 @@ expect "Discord refuses images: text only" 200 "$(post 18902 "$payload")"
 n=$((n + 1))
 expect "  no image in the retry" false "$([ -e "$capture/$n/chart-0.png" ] && echo true || echo false)"
 expect "  no image reference left" 0 "$(grep -c attachment:// "$capture/$n/payload_json.json" || true)"
-expect "Discord rate limits once: retried" 200 "$(post 18903 "$payload")"
+expect "Discord rate limits: Alertmanager retries" 502 "$(post 18903 "$payload")"
 expect "Discord down: Alertmanager retries" 502 "$(post 18904 "$payload")"
+# A burst larger than the two rendering slots queues instead of failing.
+burst=""
+for i in 1 2 3 4 5 6; do
+	post 18901 "$payload" >"$work/burst.$i" &
+	burst="$burst $!"
+done
+for p in $burst; do wait "$p"; done
+expect "burst of 6: all sent" 200200200200200200 "$(cat "$work"/burst.*)"
+n=$((n + 6))
+# Discord hangs: answered before Alertmanager's 30 s timeout.
+t0=$(date +%s)
+code=$(post 18905 "$payload")
+expect "Discord hangs: Alertmanager retries" 502 "$code"
+expect "  answered within 26 s" true "$([ $(($(date +%s) - t0)) -le 26 ] && echo true || echo false)"
 expect "not a payload" 400 "$(curl -s -o /dev/null -w '%{http_code}' --data-binary 'nope' http://127.0.0.1:18901/alertmanager)"
 head -c 1100000 /dev/zero | tr '\0' 'a' >"$work/big"
 expect "oversized payload" 413 "$(curl -s -o /dev/null -w '%{http_code}' --data-binary "@$work/big" http://127.0.0.1:18901/alertmanager)"
 expect "unknown path" 404 "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18901/)"
-expect "webhook URL never logged" 0 "$(cat "$work"/ok.log "$work"/reject-images.log "$work"/rate-limit.log "$work"/down.log | grep -c '/api/webhooks/' || true)"
+expect "webhook URL never logged" 0 "$(cat "$work"/ok.log "$work"/reject-images.log "$work"/rate-limit.log "$work"/down.log "$work"/slow.log | grep -c '/api/webhooks/' || true)"
 
 echo "captured messages in $capture"
 [ $fails -eq 0 ]

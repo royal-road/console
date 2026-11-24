@@ -14,9 +14,8 @@ mod payload;
 mod time;
 
 use std::io::Read;
-use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -28,9 +27,20 @@ use payload::Notification;
 use time::Millis;
 
 const MAX_BODY: usize = 1 << 20;
-const MAX_IN_FLIGHT: usize = 2;
-/// Chart work stops here so Alertmanager is answered in time.
+/// Notifications rendered at once; each holds its charts and query results
+/// in memory, so this bounds memory under the 128 Mi limit.
+const MAX_RENDERING: usize = 2;
+/// Notifications accepted at once, rendering or waiting for a slot. A burst
+/// (TargetDown groups by every label) queues instead of failing.
+const MAX_ACCEPTED: usize = 32;
+/// Timings from when a notification arrives. Alertmanager gives up after its
+/// 30 s `timeout` and sends again, so everything, the Discord posts included,
+/// ends by REQUEST_DEADLINE. A notification that waited QUEUE_WAIT for a slot
+/// is refused with 503 and comes back later; chart work stops at
+/// CHART_DEADLINE so the posts keep at least 10 s.
+const QUEUE_WAIT: Duration = Duration::from_secs(8);
 const CHART_DEADLINE: Duration = Duration::from_secs(15);
+const REQUEST_DEADLINE: Duration = Duration::from_secs(25);
 /// The longest chart window: 12 hours.
 const MAX_WINDOW: Millis = 12 * 3_600_000;
 
@@ -103,9 +113,9 @@ fn chart_for(
     src: &Sources,
     cfg: &Config,
     now: Millis,
-    started: Instant,
+    deadline: Instant,
 ) -> Result<(Vec<u8>, Option<String>), String> {
-    let expr = src.expression(section.alerts[0]).map_err(|e| format!("rule unavailable ({e})"))?;
+    let expr = src.expression(section.alerts[0], deadline).map_err(|e| format!("rule unavailable ({e})"))?;
     let plan = expr::plan(&expr);
     let cond = condition(&plan);
     let starts = section.alerts.iter().filter_map(|a| a.starts_ms()).min().unwrap_or(now);
@@ -120,10 +130,7 @@ fn chart_for(
     let end = end.max(start + 60_000);
     let mut primary = Vec::new();
     for q in plan.queries.iter().take(3) {
-        if started.elapsed() > CHART_DEADLINE {
-            return Err("timed out".into());
-        }
-        primary.extend(src.range(q, start, end).map_err(|e| format!("query failed ({e})"))?);
+        primary.extend(src.range(q, start, end, deadline).map_err(|e| format!("query failed ({e})"))?);
     }
     let mut threshold_series = Vec::new();
     let mut threshold_name = String::new();
@@ -132,11 +139,8 @@ fn chart_for(
         match t {
             Threshold::Scalar { op, value } => scalars.push((*op, *value)),
             Threshold::Series { query, .. } => {
-                if started.elapsed() > CHART_DEADLINE {
-                    return Err("timed out".into());
-                }
                 // A failed right-hand side still leaves a useful chart.
-                threshold_series.extend(src.range(query, start, end).unwrap_or_default());
+                threshold_series.extend(src.range(query, start, end, deadline).unwrap_or_default());
                 threshold_name = chart::query_name(query);
             }
         }
@@ -154,23 +158,27 @@ fn chart_for(
         alerts: section.alerts.iter().map(|a| &a.labels).collect(),
         max_series: cfg.max_series,
     };
-    // A rendering bug must not cost the notification: the text still goes out.
-    let png = catch_unwind(AssertUnwindSafe(|| chart::render(&spec)))
-        .map_err(|_| "rendering panicked".to_string())?
-        .map_err(|e| format!("rendering failed ({e})"))?;
+    let png = chart::render(&spec).map_err(|e| format!("rendering failed ({e})"))?;
     Ok((png, cond))
 }
 
-/// The Discord message and its attachments for a notification.
-fn render(n: &Notification, src: &Sources, cfg: &Config, now: Millis) -> (Value, Vec<(String, Vec<u8>)>) {
-    let started = Instant::now();
+/// The Discord message and its attachments for a notification. Charts not
+/// done by `deadline` are left out.
+fn render(
+    n: &Notification,
+    src: &Sources,
+    cfg: &Config,
+    now: Millis,
+    deadline: Instant,
+) -> (Value, Vec<(String, Vec<u8>)>) {
     let mut sections = discord::sections(&n.alerts);
     let charted = sections.len().min(cfg.max_charts);
     let results: Vec<Result<_, String>> = std::thread::scope(|scope| {
         let handles: Vec<_> = sections[..charted]
             .iter()
-            .map(|s| scope.spawn(move || chart_for(s, src, cfg, now, started)))
+            .map(|s| scope.spawn(move || chart_for(s, src, cfg, now, deadline)))
             .collect();
+        // A panic in fetching or drawing must not cost the notification: the text still goes out.
         handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err("rendering panicked".into()))).collect()
     });
     let mut files = Vec::new();
@@ -190,7 +198,16 @@ fn render(n: &Notification, src: &Sources, cfg: &Config, now: Millis) -> (Value,
             }
         }
     }
-    (discord::message(&sections, &cfg.console, n.truncated_alerts), files)
+    let message = discord::message(&sections, &cfg.console, n.truncated_alerts);
+    // Sections dropped to fit Discord's limits take their charts with them.
+    let attached: Vec<&str> = message["attachments"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a["filename"].as_str())
+        .collect();
+    files.retain(|(name, _)| attached.contains(&name.as_str()));
+    (message, files)
 }
 
 fn boundary() -> String {
@@ -199,9 +216,14 @@ fn boundary() -> String {
 }
 
 /// Posts the message; if Discord rejects it with the images, once more without.
-fn deliver(discord: &Discord, mut payload: Value, files: Vec<(String, Vec<u8>)>) -> Result<(), SendError> {
+fn deliver(
+    discord: &Discord,
+    mut payload: Value,
+    files: Vec<(String, Vec<u8>)>,
+    deadline: Instant,
+) -> Result<(), SendError> {
     let b = boundary();
-    match discord.post(&discord::multipart(&payload, &files, &b), &b) {
+    match discord.post(&discord::multipart(&payload, &files, &b), &b, deadline) {
         Err(SendError::Rejected(code, body)) if !files.is_empty() => {
             log(
                 json!({"level": "warn", "msg": "Discord rejected the message with charts; sending text only", "status": code, "body": body}),
@@ -212,13 +234,44 @@ fn deliver(discord: &Discord, mut payload: Value, files: Vec<(String, Vec<u8>)>)
                     obj.remove("image");
                 }
             }
-            discord.post(&discord::multipart(&payload, &[], &b), &b)
+            discord.post(&discord::multipart(&payload, &[], &b), &b, deadline)
         }
         other => other,
     }
 }
 
-fn handle(mut req: tiny_http::Request, discord: &Discord, src: &Sources, cfg: &Config) {
+/// At most MAX_RENDERING holders at once.
+struct Slots {
+    busy: Mutex<usize>,
+    freed: Condvar,
+}
+
+struct Slot<'a>(&'a Slots);
+
+impl Slots {
+    fn acquire(&self, until: Instant) -> Option<Slot<'_>> {
+        let mut busy = self.busy.lock().unwrap_or_else(|e| e.into_inner());
+        while *busy >= MAX_RENDERING {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            busy = self.freed.wait_timeout(busy, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
+        *busy += 1;
+        Some(Slot(self))
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        *self.0.busy.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        self.0.freed.notify_one();
+    }
+}
+
+fn handle(mut req: tiny_http::Request, discord: &Discord, src: &Sources, cfg: &Config, slots: &Slots) {
+    let arrived = Instant::now();
     let respond = |req: tiny_http::Request, code: u16, body: &str| {
         let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(code));
     };
@@ -238,10 +291,12 @@ fn handle(mut req: tiny_http::Request, discord: &Discord, src: &Sources, cfg: &C
     if n.alerts.is_empty() {
         return respond(req, 200, "nothing to send\n");
     }
-    let started = Instant::now();
-    let (payload, files) = render(&n, src, cfg, time::now_ms());
+    let Some(_slot) = slots.acquire(arrived + QUEUE_WAIT) else {
+        return respond(req, 503, "busy\n");
+    };
+    let (payload, files) = render(&n, src, cfg, time::now_ms(), arrived + CHART_DEADLINE);
     let charts = files.len();
-    let result = deliver(discord, payload, files);
+    let result = deliver(discord, payload, files, arrived + REQUEST_DEADLINE);
     let mut line = json!({
         "level": "info",
         "msg": "notification",
@@ -249,7 +304,7 @@ fn handle(mut req: tiny_http::Request, discord: &Discord, src: &Sources, cfg: &C
         "group_key": n.group_key,
         "alerts": n.alerts.len(),
         "charts": charts,
-        "ms": started.elapsed().as_millis() as u64,
+        "ms": arrived.elapsed().as_millis() as u64,
     });
     match result {
         Ok(()) => {
@@ -280,7 +335,7 @@ fn serve() {
     if !(url.starts_with("https://") || allow_http && url.starts_with("http://")) {
         fail("the Discord webhook URL must start with https://");
     }
-    let discord = Arc::new(Discord::new(url, Duration::from_secs(10), allow_http));
+    let discord = Arc::new(Discord::new(url, allow_http));
     let listen = env("LISTEN_ADDR").unwrap_or_else(|| "0.0.0.0:8080".into());
     let server =
         tiny_http::Server::http(&listen).unwrap_or_else(|e| fail(&format!("cannot listen on {listen}: {e}")));
@@ -288,15 +343,17 @@ fn serve() {
         json!({"level": "info", "msg": "listening", "addr": listen, "vmalert": src.vmalert, "vmselect": src.vmselect}),
     );
     let in_flight = Arc::new(AtomicUsize::new(0));
+    let slots = Arc::new(Slots { busy: Mutex::new(0), freed: Condvar::new() });
     for req in server.incoming_requests() {
-        if in_flight.fetch_add(1, Ordering::SeqCst) >= MAX_IN_FLIGHT {
+        if in_flight.fetch_add(1, Ordering::SeqCst) >= MAX_ACCEPTED {
             in_flight.fetch_sub(1, Ordering::SeqCst);
             let _ = req.respond(tiny_http::Response::from_string("busy\n").with_status_code(503));
             continue;
         }
-        let (cfg, src, discord, in_flight) = (cfg.clone(), src.clone(), discord.clone(), in_flight.clone());
+        let (cfg, src, discord, in_flight, slots) =
+            (cfg.clone(), src.clone(), discord.clone(), in_flight.clone(), slots.clone());
         std::thread::spawn(move || {
-            handle(req, &discord, &src, &cfg);
+            handle(req, &discord, &src, &cfg, &slots);
             in_flight.fetch_sub(1, Ordering::SeqCst);
         });
     }
@@ -312,7 +369,7 @@ fn render_to_dir(args: &[String]) {
     });
     let raw = std::fs::read(input).unwrap_or_else(|e| fail(&format!("{input}: {e}")));
     let n: Notification = serde_json::from_slice(&raw).unwrap_or_else(|e| fail(&format!("{input}: {e}")));
-    let (payload, files) = render(&n, &sources(), &config(), now);
+    let (payload, files) = render(&n, &sources(), &config(), now, Instant::now() + CHART_DEADLINE);
     std::fs::create_dir_all(out).unwrap_or_else(|e| fail(&format!("{out}: {e}")));
     let write = |name: &str, data: &[u8]| {
         std::fs::write(format!("{out}/{name}"), data).unwrap_or_else(|e| fail(&format!("{out}/{name}: {e}")))
@@ -335,6 +392,20 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_full_house_waits_for_a_slot_then_gives_up() {
+        let slots = Slots { busy: Mutex::new(0), freed: Condvar::new() };
+        let soon = || Instant::now() + Duration::from_millis(50);
+        let held: Vec<_> = (0..MAX_RENDERING).map(|_| slots.acquire(soon()).unwrap()).collect();
+        assert!(slots.acquire(soon()).is_none(), "full: gives up at its deadline");
+        std::thread::scope(|s| {
+            let waiter = s.spawn(|| slots.acquire(Instant::now() + Duration::from_secs(5)).is_some());
+            std::thread::sleep(Duration::from_millis(50));
+            drop(held);
+            assert!(waiter.join().unwrap(), "a freed slot goes to the one waiting");
+        });
+    }
 
     #[test]
     fn conditions_in_words() {

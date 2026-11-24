@@ -75,5 +75,6 @@ It passes the `restricted` Pod Security level.
   public address on port 443.
 - vmalert's own `-external.url` and source template are not used. The link
   comes from the alert's labels, so the vmalert pod IP never reaches Discord.
-- Links without a workload use observe-plugin's `/observe/alert` route (see
-  the alert-renderer README, "Links").
+- Links without a workload label go to the namespace's Observe tab, or to
+  Observe › Overview when there is no namespace (see the alert-renderer
+  README, "Links"). Every link target exists in observe-plugin today.

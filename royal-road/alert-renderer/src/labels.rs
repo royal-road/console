@@ -74,15 +74,29 @@ pub fn rank(key: &str) -> (bool, usize, bool, &str) {
 
 pub type Pairs<'a> = Vec<(&'a str, &'a str)>;
 
+/// The labels kube-state-metrics' own scrape adds to series that name no pod
+/// (`kube_deployment_*`, `kube_cronjob_*`): they describe the exporter, not
+/// the alert's subject. When a series is about a pod, its `container` is that
+/// pod's container, so this does not match.
+const KSM_SCRAPE: &[&str] = &["pod", "container", "service"];
+
+fn is_ksm_scrape(labels: &Labels) -> bool {
+    let is = |k: &str| labels.get(k).map(String::as_str) == Some("kube-state-metrics");
+    is("job") && is("container")
+}
+
 /// Identifying labels in reading order, then folded ones; dropped labels go.
 pub fn classify(labels: &Labels) -> (Pairs<'_>, Pairs<'_>) {
+    let ksm = is_ksm_scrape(labels);
+    let folded_here = |k: &str| is_folded(k) || ksm && KSM_SCRAPE.contains(&k);
     let mut identifying: Vec<(&str, &str)> = labels
         .iter()
-        .filter(|(k, _)| !is_dropped(k) && !is_folded(k))
+        .filter(|(k, _)| !is_dropped(k) && !folded_here(k))
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
     identifying.sort_by_key(|(k, _)| rank(k));
-    let folded = labels.iter().filter(|(k, _)| is_folded(k)).map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let folded =
+        labels.iter().filter(|(k, _)| folded_here(k)).map(|(k, v)| (k.as_str(), v.as_str())).collect();
     (identifying, folded)
 }
 
@@ -124,7 +138,8 @@ pub fn workload(labels: &Labels) -> Option<Workload<'_>> {
         ("k8s_daemonset_name", "daemonsets"),
         ("pod", "pods"),
     ];
-    KINDS.iter().find_map(|(label, plural)| {
+    let ksm = is_ksm_scrape(labels);
+    KINDS.iter().filter(|(label, _)| !(ksm && *label == "pod")).find_map(|(label, plural)| {
         let name = labels.get(*label).filter(|v| !v.is_empty())?;
         Some(Workload { plural, namespace, name })
     })
@@ -132,43 +147,30 @@ pub fn workload(labels: &Labels) -> Option<Workload<'_>> {
 
 const OBSERVE_LEAD_MS: Millis = 30 * 60_000;
 
-/// Where "Investigate" goes.
+/// Where "Investigate" goes: observe-plugin's deep link, from 30 minutes
+/// before the alert started. A resolved alert gets a closed window that ends
+/// 30 minutes after it did, so the link still shows the incident later.
 ///
-/// With a workload: its Observe tab focused on the alert, from 30 minutes
-/// before it started (observe-plugin's deep link). A resolved alert gets a
-/// closed window that ends 30 minutes after it did, so the link still shows
-/// the incident later. Without one: observe-plugin's `/observe/alert` route,
-/// which resolves the labels to a workload in the console or falls back to
-/// Observe › Alerts.
+/// The workload's Observe tab when the labels name one, else the namespace's
+/// Observe tab, else Observe › Overview for the same window.
 pub fn console_link(console: &str, alert: &Alert) -> String {
     let console = console.trim_end_matches('/');
-    let name = alert.alertname();
-    let from = alert.starts_ms().map(|t| t - OBSERVE_LEAD_MS);
-    if let Some(w) = workload(&alert.labels) {
-        let mut url = format!(
-            "{console}/k8s/ns/{}/{}/{}/observe?focus=alert:{}",
-            enc(w.namespace),
-            w.plural,
-            enc(w.name),
-            enc(name)
-        );
-        if let Some(from) = from {
-            let to = alert.ended_ms().map_or("now".to_string(), |t| (t + OBSERVE_LEAD_MS).to_string());
-            url.push_str(&format!("&from={from}&to={to}"));
+    let focus = format!("focus=alert:{}", enc(alert.alertname()));
+    let mut url = if let Some(w) = workload(&alert.labels) {
+        format!("{console}/k8s/ns/{}/{}/{}/observe?{focus}", enc(w.namespace), w.plural, enc(w.name))
+    } else if let Some(ns) = alert.labels.get("namespace").filter(|v| !v.is_empty()) {
+        format!("{console}/k8s/cluster/namespaces/{}/observe?{focus}", enc(ns))
+    } else {
+        format!("{console}/observe/overview?")
+    };
+    if let Some(from) = alert.starts_ms().map(|t| t - OBSERVE_LEAD_MS) {
+        let to = alert.ended_ms().map_or("now".to_string(), |t| (t + OBSERVE_LEAD_MS).to_string());
+        if !url.ends_with('?') {
+            url.push('&');
         }
-        return url;
+        url.push_str(&format!("from={from}&to={to}"));
     }
-    let mut url = format!("{console}/observe/alert?alertname={}", enc(name));
-    let (identifying, _) = classify(&alert.labels);
-    // Long values (hashes, messages) do not identify a workload and would
-    // only bloat the link.
-    for (k, v) in identifying.iter().filter(|(_, v)| v.len() <= 100).take(8) {
-        url.push_str(&format!("&{}={}", enc(k), enc(v)));
-    }
-    if let Some(start) = alert.starts_ms() {
-        url.push_str(&format!("&activeAt={start}"));
-    }
-    url
+    url.trim_end_matches('?').to_string()
 }
 
 /// Percent-encodes everything but RFC 3986 unreserved characters.
@@ -274,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn without_a_workload_the_alert_route_resolves_it() {
+    fn without_a_workload_the_namespace_observe_tab() {
         let a = alert(
             r#"{"status":"firing","startsAt":"2026-11-24T14:40:00Z",
                 "labels":{"alertname":"IngressHigh5xxRate","namespace":"royal-road","ingress":"api",
@@ -282,9 +284,56 @@ mod tests {
         );
         assert_eq!(
             console_link("https://c", &a),
-            "https://c/observe/alert?alertname=IngressHigh5xxRate&namespace=royal-road\
-             &service=royalroad-api&ingress=api&activeAt=1795531200000"
+            "https://c/k8s/cluster/namespaces/royal-road/observe?focus=alert:IngressHigh5xxRate\
+             &from=1795529400000&to=now"
         );
+    }
+
+    #[test]
+    fn without_a_namespace_observe_overview() {
+        let a = alert(
+            r#"{"status":"firing","startsAt":"2026-11-24T14:40:00Z",
+                "labels":{"alertname":"NodeFilesystemSpaceFillingUp","instance":"192.0.2.1:9100"}}"#,
+        );
+        assert_eq!(console_link("https://c", &a), "https://c/observe/overview?from=1795529400000&to=now");
+        let a = alert(r#"{"status":"firing","labels":{"alertname":"X"}}"#);
+        assert_eq!(console_link("https://c", &a), "https://c/observe/overview");
+    }
+
+    /// AbuseDetectorNotSucceeding as it fired in production: kube-state-metrics'
+    /// scrape adds its own pod, container and service to a CronJob series.
+    #[test]
+    fn kube_state_metrics_scrape_labels_are_not_the_subject() {
+        let a = alert(
+            r#"{"status":"firing","startsAt":"2026-11-24T14:40:00Z",
+                "labels":{"alertname":"AbuseDetectorNotSucceeding","namespace":"abuse-detection",
+                          "cronjob":"abuse-detector","job":"kube-state-metrics","container":"kube-state-metrics",
+                          "pod":"kube-state-metrics-79bc4974d-5f5qv","service":"kube-state-metrics",
+                          "instance":"192.0.2.7:8443","severity":"warning"}}"#,
+        );
+        assert_eq!(workload(&a.labels), None);
+        let (id, folded) = classify(&a.labels);
+        assert_eq!(id, [("namespace", "abuse-detection"), ("cronjob", "abuse-detector")]);
+        assert!(folded.contains(&("pod", "kube-state-metrics-79bc4974d-5f5qv")));
+        assert!(console_link("https://c", &a).starts_with(
+            "https://c/k8s/cluster/namespaces/abuse-detection/observe?focus=alert:AbuseDetectorNotSucceeding&"
+        ));
+        // A deployment label still wins over the exporter's pod.
+        let l = labels(&[
+            ("namespace", "sentry"),
+            ("deployment", "snuba-consumer"),
+            ("job", "kube-state-metrics"),
+            ("container", "kube-state-metrics"),
+            ("pod", "kube-state-metrics-1"),
+        ]);
+        assert_eq!(workload(&l).unwrap().name, "snuba-consumer");
+        // A series about the exporter's own pod (no scrape job) keeps its pod.
+        let l = labels(&[
+            ("namespace", "openshift-monitoring"),
+            ("pod", "kube-state-metrics-1"),
+            ("container", "kube-state-metrics"),
+        ]);
+        assert_eq!(workload(&l).unwrap().plural, "pods");
     }
 
     #[test]

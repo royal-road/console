@@ -3,19 +3,19 @@
 
     fake_backends.py PORT CAPTURE_DIR
 
-- /vmalert/api/v1/alert           404, so the renderer falls back to the rules list
 - /vmalert/api/v1/rules           rules from testdata/prod-exprs.json, filtered by rule_name[]
 - /select/0/prometheus/api/v1/query_range
                                   two synthetic series per query, crossing 1.0
 - POST /api/webhooks/<id>/<token> Discord: saves each multipart part to
                                   CAPTURE_DIR/<n>/; token "reject-images" answers
                                   400 when files are attached, "rate-limit" answers
-                                  429 once, "down" answers 503
+                                  429, "down" answers 503, "slow" answers after 40 s
 """
 import json
 import math
 import os
 import sys
+import time
 from email.parser import BytesParser
 from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES = json.load(open(os.path.join(HERE, "..", "testdata", "prod-exprs.json")))
 CAPTURE = sys.argv[2]
-state = {"n": 0, "rate_limited": False}
+state = {"n": 0}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -42,8 +42,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         q = parse_qs(url.query)
-        if url.path == "/vmalert/api/v1/alert":
-            return self.reply(404, {"error": "not found", "errorType": 404})
         if url.path == "/vmalert/api/v1/rules":
             names = q.get("rule_name[]", [])
             rules = [
@@ -78,8 +76,9 @@ class Handler(BaseHTTPRequestHandler):
         has_files = any(n.startswith("files[") for n in parts)
         if token == "down":
             return self.reply(503, {"message": "unavailable"})
-        if token == "rate-limit" and not state["rate_limited"]:
-            state["rate_limited"] = True
+        if token == "slow":
+            time.sleep(40)
+        if token == "rate-limit":
             return self.reply(429, {"message": "You are being rate limited.", "retry_after": 0.2, "global": False})
         if token == "reject-images" and has_files:
             return self.reply(400, {"message": "Request entity too large", "code": 40005})

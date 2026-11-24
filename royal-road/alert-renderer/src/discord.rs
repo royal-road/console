@@ -1,7 +1,7 @@
 //! The Discord message: one embed per alert rule in the notification, each
 //! with its chart attached, and the multipart request that posts it.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use ureq::Agent;
@@ -84,6 +84,12 @@ pub fn escape(s: &str) -> String {
     out
 }
 
+/// Annotation text keeps its markdown (rules write `**bold**`), but a
+/// templated label value must not turn it into a masked link.
+fn annotation(s: &str) -> String {
+    s.trim().replace("](", "]\\(")
+}
+
 fn ts(ms: i64) -> String {
     format!("<t:{}:R>", ms.div_euclid(1000))
 }
@@ -110,9 +116,10 @@ fn common<'a>(s: &Section<'a>) -> Vec<(&'a str, &'a str)> {
 }
 
 fn link_text(a: &Alert) -> String {
-    match labels::workload(&a.labels) {
-        Some(w) => format!("Investigate {} in Observe", escape(w.name)),
-        None => "Investigate in the console".to_string(),
+    match (labels::workload(&a.labels), a.labels.get("namespace").filter(|n| !n.is_empty())) {
+        (Some(w), _) => format!("Investigate {} in Observe", escape(w.name)),
+        (None, Some(ns)) => format!("Investigate namespace {} in Observe", escape(ns)),
+        (None, None) => "Open Observe › Overview".to_string(),
     }
 }
 
@@ -131,10 +138,10 @@ fn description(s: &Section, console: &str, budget: usize) -> String {
         let summary = a0.annotations.get("summary").or_else(|| a0.annotations.get("message"));
         let desc = a0.annotations.get("description").filter(|d| Some(*d) != summary);
         if let Some(summary) = summary {
-            text.push_str(&format!("**{}**\n", summary.trim()));
+            text.push_str(&format!("**{}**\n", annotation(summary)));
         }
         if let Some(d) = desc {
-            text.push_str(d.trim());
+            text.push_str(&annotation(d));
             text.push('\n');
         }
     } else {
@@ -143,12 +150,12 @@ fn description(s: &Section, console: &str, budget: usize) -> String {
             s.alerts.iter().all(|a| a.annotations.get(k) == Some(v)).then_some(v)
         };
         if let Some(summary) = same("summary") {
-            text.push_str(&format!("**{}**\n", summary.trim()));
+            text.push_str(&format!("**{}**\n", annotation(summary)));
         }
         let common_keys: Vec<&str> = common(s).iter().map(|(k, _)| *k).collect();
         for a in s.alerts.iter().take(MAX_LISTED) {
             let what = match a.annotations.get("summary").filter(|_| same("summary").is_none()) {
-                Some(summary) => summary.trim().to_string(),
+                Some(summary) => annotation(summary),
                 None => {
                     let (id, _) = labels::classify(&a.labels);
                     let parts: Vec<String> = id
@@ -361,9 +368,8 @@ impl std::fmt::Display for SendError {
 
 impl Discord {
     /// `url` is the webhook URL; it is a secret and never logged.
-    pub fn new(url: String, timeout: Duration, allow_http: bool) -> Discord {
+    pub fn new(url: String, allow_http: bool) -> Discord {
         let agent = Agent::config_builder()
-            .timeout_global(Some(timeout))
             .timeout_connect(Some(Duration::from_secs(5)))
             .https_only(!allow_http)
             .http_status_as_error(false)
@@ -374,37 +380,32 @@ impl Discord {
         Discord { agent, url }
     }
 
-    /// Posts once, and once more after a short 429.
-    pub fn post(&self, body: &[u8], boundary: &str) -> Result<(), SendError> {
-        for attempt in 0..2 {
-            let resp = self
-                .agent
-                .post(&self.url)
-                .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
-                .header("User-Agent", "alert-renderer")
-                .send(body)
-                // ureq's errors name the host, not the token path; keep only the kind.
-                .map_err(|e| SendError::Transient(error_kind(&e)))?;
-            let status = resp.status().as_u16();
-            let mut resp = resp;
-            let text = resp.body_mut().with_config().limit(64 * 1024).read_to_string().unwrap_or_default();
-            match status {
-                200..=299 => return Ok(()),
-                429 if attempt == 0 => {
-                    let wait = serde_json::from_str::<Value>(&text)
-                        .ok()
-                        .and_then(|v| v["retry_after"].as_f64())
-                        .unwrap_or(1.0);
-                    if wait > 5.0 {
-                        return Err(SendError::Transient(format!("rate limited for {wait:.0}s")));
-                    }
-                    std::thread::sleep(Duration::from_secs_f64(wait.max(0.1)));
-                }
-                400..=499 if status != 429 => return Err(SendError::Rejected(status, truncate(&text, 300))),
-                _ => return Err(SendError::Transient(format!("status {status}"))),
-            }
+    /// Posts once, within `deadline`. Alertmanager retries what fails
+    /// transiently (a 429 included) with its own backoff.
+    pub fn post(&self, body: &[u8], boundary: &str, deadline: Instant) -> Result<(), SendError> {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(SendError::Transient("no time left".into()));
         }
-        Err(SendError::Transient("rate limited".into()))
+        let mut resp = self
+            .agent
+            .post(&self.url)
+            .config()
+            .timeout_global(Some(left))
+            .build()
+            .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+            .header("User-Agent", "alert-renderer")
+            .send(body)
+            // ureq's errors name the host, not the token path; keep only the kind.
+            .map_err(|e| SendError::Transient(error_kind(&e)))?;
+        let status = resp.status().as_u16();
+        let text = resp.body_mut().with_config().limit(64 * 1024).read_to_string().unwrap_or_default();
+        match status {
+            200..=299 => Ok(()),
+            429 => Err(SendError::Transient("rate limited".into())),
+            400..=499 => Err(SendError::Rejected(status, truncate(&text, 300))),
+            _ => Err(SendError::Transient(format!("status {status}"))),
+        }
     }
 }
 
@@ -454,7 +455,7 @@ mod tests {
         assert!(
             d.starts_with("**GPUStack model qwen38-sglang-tp2-stable1 is under-replicated (0 running)**\n")
         );
-        assert!(d.contains("[Investigate in the console](https://console.example.com/observe/alert?alertname=GPUStackModelUnderReplicated&service=gpustack"));
+        assert!(d.contains("[Open Observe › Overview](https://console.example.com/observe/overview?from="));
         let names: Vec<&str> =
             e["fields"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["Service", "Cluster name", "Model name", "Model id", "Since", "Condition"]);
@@ -520,7 +521,7 @@ mod tests {
         let many: Vec<String> = (0..14)
             .map(|i| {
                 format!(
-                    r#"{{"status":"firing","labels":{{"alertname":"A{i}","severity":"warning","namespace":"{long}"}},
+                    r#"{{"status":"firing","labels":{{"alertname":"A{i}","severity":"warning","service":"{long}"}},
                         "annotations":{{"description":"{long}"}}}}"#
                 )
             })
@@ -547,6 +548,16 @@ mod tests {
         let m = message(&sections(&a), CONSOLE, 0);
         assert_eq!(m["embeds"][0]["fields"][0]["value"], "\\@everyone \\[x\\]\\(https://evil\\)");
         assert_eq!(m["allowed_mentions"]["parse"], json!([]));
+    }
+
+    #[test]
+    fn annotations_cannot_carry_masked_links() {
+        let a = alerts(
+            r#"{"alerts":[{"status":"firing","labels":{"alertname":"X"},
+                "annotations":{"summary":"5xx on [/login](https://evil)","description":"route **[a](https://evil)**"}}]}"#,
+        );
+        let d = message(&sections(&a), CONSOLE, 0)["embeds"][0]["description"].as_str().unwrap().to_string();
+        assert!(d.starts_with("**5xx on [/login]\\(https://evil)**\nroute **[a]\\(https://evil)**"), "{d}");
     }
 
     #[test]
