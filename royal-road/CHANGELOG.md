@@ -2,6 +2,17 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Unified Observe: profiles
+
+- trace-federator serves profiles from Pyroscope for observe-plugin's Profiles tab: `GET /profiles/{namespace}/scopes` and `POST /profiles/{namespace}/{method}` for `SelectMergeStacktraces`, `SelectSeries`, `Diff`, `Series`, `LabelNames` and `LabelValues`, passed to Pyroscope's Connect API.
+  - Access: `get pods` in the namespace, checked with the viewer's token (SelfSubjectAccessReview, cached 60 s). No new ClusterRole.
+  - Every selector is parsed strictly and must contain `namespace="<ns>"`, or `service_name="<s>"` for a service that `profiles.legacyServices` lists for that namespace. The second shape gets `namespace=~"|<ns>"` appended, so it covers profiles from before and after the services carry `namespace` and `k8s_deployment_name` labels and never reaches another namespace's.
+  - Requests are rebuilt from an allowlist of fields per method. `maxNodes` defaults to 8192 and is clamped to 16384. Every window is 24 h at most, because Pyroscope's `max_query_length` (1 day) applies to the metadata calls too. `Series`, `LabelNames` and `LabelValues` take exactly one matcher. `SelectSeries` refuses `stackTraceSelector`, which Pyroscope ignores there. Bodies are at most 64 KiB.
+  - Responses are streamed with `Cache-Control: no-store` and gzipped on request; errors are Connect-shaped `{code, message}`. The upstream timeout is 20 s (504).
+  - Metrics: endpoint labels `profiles-scopes` and `profiles-<method>`, and store `pyroscope` in the backend metrics.
+  - Tested against a fake Pyroscope (access matrix, 25 selector-injection attempts, limits, error mapping, gzip) and, read-only, against production Pyroscope 2.4.4 through a port-forward: a 1 h flame graph at 16k nodes was 888 KB, 131 KB gzipped.
+- `royal-road/deploy/tracing`: `20-config.yaml` gains the `profiles` block (`legacyServices: royal-road: [royalroad.website]`); the README covers the Pyroscope NetworkPolicy entry the federator needs, access and rollback.
+
 ## Unified Observe: traces and alerts
 
 - monitoring-plugin patch `0006-hide-alerting-nav-item.patch`: observe-plugin's Observe › Alerts replaces the admin Observe › Alerting menu item. Every alert, rule and silence route stays, so links into the upstream pages keep working. Metrics takes Alerting's old anchor; Alerts anchors before Metrics, else Logs, else Traces. The console's own sort gives Overview, Explorer, Dashboards (Perses), Alerts, Metrics, Logs, Traces, Targets for all 325 load orders over the 31 plugin subsets. Roll it out together with an observe-plugin that has the Alerts item, and roll it back with it.
