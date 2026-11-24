@@ -207,8 +207,8 @@ func (s *server) tempoAPI(w http.ResponseWriter, r *http.Request) {
 			limit = 20
 		}
 		limit = min(limit, 1000)
-		slices, _ := strconv.Atoi(p["slices"])
-		req := SearchRequest{Raw: q, Start: start, End: end, Limit: limit, Slices: min(max(slices, 1), maxSlices), Params: p}
+		nSlices, _ := strconv.Atoi(p["slices"])
+		req := SearchRequest{Raw: q, Start: start, End: end, Limit: limit, Slices: min(max(nSlices, 1), maxSlices), Params: p}
 		req.Params["q"] = q
 		req.Query, req.ParseErr = ParseTraceQL(q)
 		var traces []TraceSummary

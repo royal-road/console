@@ -47,7 +47,7 @@ The merged list is sorted newest first and cut to `limit`. Every row lists its `
 Stores return the most recent matches, so a search over a busy hour gets traces from its last minutes only. **`slices=N`** (1 to 24, larger values are capped) spreads the samples over the range:
 - `[start, end]` is split into N equal windows on whole seconds, never more windows than seconds.
 - Each store searches every window in parallel, with limit `ceil(limit/N)`, within its usual `searchTimeout`. Any window failing fails that store.
-- The results are merged as above, de-duplicated by trace ID, sorted newest first and cut to `limit`. When `N` does not divide `limit`, the cut drops a few traces from the oldest window.
+- The results are merged as above, de-duplicated by trace ID and sorted newest first. The cut to `limit` is per window: at most `ceil(limit/N)` traces that start in each window, so several stores that return different traces still cover the whole range. When `N` does not divide `limit`, the final cut drops a few traces from the oldest window.
 - Without `slices`, with `slices=1`, or without both `start` and `end`, the search is one query per store. `slices` is never sent to the stores.
 
 Observe's trace scatter sends `slices=12`.

@@ -187,7 +187,33 @@ func (f *federator) search(ctx context.Context, v *viewer, view []*store, req Se
 		ordered = append(ordered, perStore[s.cfg.Name])
 		names = append(names, s.cfg.Name)
 	}
+	if windows := sliceWindows(req.Start, req.End, req.Slices); windows != nil {
+		return spreadCut(mergeSearch(names, ordered, 0), windows, req.Limit), statuses, nil
+	}
 	return mergeSearch(names, ordered, req.Limit), statuses, nil
+}
+
+// spreadCut cuts merged, newest-first traces to limit while keeping the
+// spread of a sliced search: at most ceil(limit/len(windows)) traces start in
+// each window. A single newest-first cut would keep only the newest part of
+// the range once several stores return different traces for it. Traces
+// starting outside the range count towards the nearest window.
+func spreadCut(traces []TraceSummary, windows [][2]time.Time, limit int) []TraceSummary {
+	perWindow := (limit + len(windows) - 1) / len(windows)
+	kept := make([]int, len(windows))
+	out := traces[:0]
+	for _, t := range traces {
+		ts := t.startNanos()
+		w := min(sort.Search(len(windows), func(i int) bool { return ts <= windows[i][1].UnixNano() }), len(windows)-1)
+		if kept[w] < perWindow {
+			kept[w]++
+			out = append(out, t)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit] // N x ceil(limit/N) can exceed limit by N-1, taken from the oldest window
+	}
+	return out
 }
 
 // maxSlices caps the search's slices parameter.
@@ -195,8 +221,11 @@ const maxSlices = 24
 
 // sliceWindows splits [start, end] into n equal windows, oldest first, on
 // whole seconds (Tempo's start and end are Unix seconds). It returns nil
-// when there is nothing to split.
+// when there is nothing to split, including when start is unset.
 func sliceWindows(start, end time.Time, n int) [][2]time.Time {
+	if start.IsZero() {
+		return nil
+	}
 	secs := end.Unix() - start.Unix()
 	n = int(min(int64(n), secs))
 	if n <= 1 {
@@ -216,10 +245,10 @@ func sliceWindows(start, end time.Time, n int) [][2]time.Time {
 // time range, it searches each of req.Slices equal windows in parallel with
 // limit ceil(Limit/Slices), so the samples spread over the range instead of
 // all coming from its most recent minutes. Window results are concatenated;
-// mergeSearch de-duplicates them.
+// mergeSearch de-duplicates them and spreadCut keeps the spread across stores.
 func searchSliced(ctx context.Context, s *store, req SearchRequest) ([]TraceSummary, error) {
 	windows := sliceWindows(req.Start, req.End, req.Slices)
-	if req.Start.IsZero() || req.End.IsZero() || windows == nil {
+	if windows == nil {
 		return s.Search(ctx, &req)
 	}
 	perWindow := (req.Limit + len(windows) - 1) / len(windows)

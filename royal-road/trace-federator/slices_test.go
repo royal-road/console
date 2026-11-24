@@ -56,6 +56,8 @@ type recordingBackend struct {
 	mu   sync.Mutex
 	reqs []SearchRequest
 	fail error
+	id   string        // trace ID prefix, so two stores can hold different traces
+	skew time.Duration // shifts every start back, so two stores' traces interleave
 }
 
 func (b *recordingBackend) Search(_ context.Context, req *SearchRequest) ([]TraceSummary, error) {
@@ -67,8 +69,8 @@ func (b *recordingBackend) Search(_ context.Context, req *SearchRequest) ([]Trac
 	}
 	var out []TraceSummary
 	for i := range req.Limit {
-		ts := req.End.Add(-time.Duration(i) * time.Second)
-		out = append(out, TraceSummary{TraceID: strconv.FormatInt(ts.Unix(), 16), StartTimeUnixNano: strconv.FormatInt(ts.UnixNano(), 10)})
+		ts := req.End.Add(-time.Duration(i)*time.Second - b.skew)
+		out = append(out, TraceSummary{TraceID: b.id + strconv.FormatInt(ts.Unix(), 16), StartTimeUnixNano: strconv.FormatInt(ts.UnixNano(), 10)})
 	}
 	return out, nil
 }
@@ -124,6 +126,39 @@ func TestSearchSlices(t *testing.T) {
 	}
 	if oldest := time.Unix(0, out[len(out)-1].startNanos()); oldest.After(start.Add(10 * time.Minute)) {
 		t.Errorf("oldest sample %v is not from the first window", end.Sub(oldest))
+	}
+}
+
+// Two stores holding different traces return about twice the limit between
+// them; the cut must keep every window, not just the newest half of the range.
+func TestSearchSlicesKeepsSpreadAcrossStores(t *testing.T) {
+	end := time.Now().Truncate(time.Second)
+	start := end.Add(-time.Hour)
+	var view []*store
+	for _, b := range []*recordingBackend{{id: "a"}, {id: "b", skew: 500 * time.Millisecond}} {
+		view = append(view, &store{Backend: b, cfg: BackendConfig{Name: b.id, Access: "rbac", SearchTimeout: Duration{time.Second}}})
+	}
+	out, st, err := allowAll("a", "b").search(context.Background(), &viewer{token: "t"}, view,
+		SearchRequest{Raw: "{}", Start: start, End: end, Limit: 480, Slices: 12, Params: map[string]string{}})
+	if err != nil || st[0].Status != "ok" || st[1].Status != "ok" {
+		t.Fatalf("%v %+v", err, st)
+	}
+	if len(out) != 480 {
+		t.Fatalf("%d traces", len(out))
+	}
+	perWindow := map[int]int{}
+	for _, tr := range out {
+		perWindow[int(time.Unix(0, tr.startNanos()).Sub(start)/(5*time.Minute))]++
+	}
+	for w := range 12 {
+		if perWindow[w] == 0 {
+			t.Errorf("window %d has no traces: %v", w, perWindow)
+		}
+	}
+	for i := 1; i < len(out); i++ {
+		if out[i].startNanos() > out[i-1].startNanos() {
+			t.Fatalf("not newest first at %d", i)
+		}
 	}
 }
 
