@@ -1,12 +1,7 @@
 # trace-federator configuration (JSON; see royal-road/trace-federator/README.md).
 # Placeholders in <...>. Backend names are what users see as "instances" in
 # the Traces page and what trace-reader's resourceNames refer to.
-#
-# profiles: Pyroscope for observe-plugin's Profiles tab. legacyServices lists
-# the service_name values whose profiles have no namespace label yet and come
-# from that namespace only. Add royalroad.api there only if it is profiled
-# before its pods carry the namespace and k8s_deployment_name labels; remove
-# an entry once its service has carried them for Pyroscope's retention.
+# profiles: Pyroscope for observe-plugin's Profiles tab (README.md, "Profiles").
 apiVersion: v1
 kind: ConfigMap
 metadata:

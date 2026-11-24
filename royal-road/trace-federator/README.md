@@ -127,20 +127,20 @@ The federator's ServiceAccount only lists SentryProjectBindings, every `kubernet
 
 Anything else gets 400. Other matchers (`pod`, `k8s_deployment_name`, `env`) only narrow. The legacy shape covers profiles pushed before the services carried `namespace` and `k8s_deployment_name` labels: `namespace=~"|<ns>"` matches a profile without the label or with that namespace, never one labelled with another namespace. `legacyServices` is a trust statement: it says unlabelled profiles of that service come from that namespace. Remove an entry once the service has carried the labels for Pyroscope's retention.
 
-**Requests** are rebuilt from an allowlist of fields per method; any other field gets 400, so a field Pyroscope adds later cannot bypass these checks. Field names are matched exactly.
+**Requests** are decoded into a typed struct per method and rebuilt from it, so nothing else reaches Pyroscope. A field the struct lacks gets 400.
 
 | Method | Fields | Checks |
 |---|---|---|
-| `SelectMergeStacktraces` | `profileTypeID`, `labelSelector`, `start`, `end`, `maxNodes`, `stackTraceSelector` | `maxNodes` missing or 0 becomes 8192 (Pyroscope's default); larger than `profiles.maxNodes` is clamped. `stackTraceSelector` may hold `callSite: [{name}]` only. |
+| `SelectMergeStacktraces` | `profileTypeID`, `labelSelector`, `start`, `end`, `maxNodes`, `stackTraceSelector` | `maxNodes` missing, 0 or negative becomes 8192 (Pyroscope's default); larger than `profiles.maxNodes` is clamped. `stackTraceSelector` may hold `callSite: [{name}]` only. |
 | `SelectSeries` | `profileTypeID`, `labelSelector`, `start`, `end`, `step`, `groupBy`, `aggregation`, `limit` | `step` ≥ 1 s, at most 2000 points. `stackTraceSelector` gets 400: Pyroscope ignores it here, so the selected-function timeline uses `SelectMergeStacktraces` with `callSite` and `maxNodes: 1` per bucket. |
 | `Diff` | `left`, `right` | Each side as `SelectMergeStacktraces` |
 | `Series` | `matchers` (exactly one), `labelNames`, `start`, `end` | Pyroscope returns nothing for several matchers |
 | `LabelNames` | `matchers` (one), `start`, `end` | |
 | `LabelValues` | `name`, `matchers` (one), `start`, `end` | |
 
-`start` and `end` (Unix ms, numbers or strings) are required, and `end - start` must be at most `profiles.maxWindow` (24 h) for every method: Pyroscope's `max_query_length` is 1 day, for the metadata methods too. Bodies are at most 64 KiB (413) and `application/json` (415).
+`start` and `end` (Unix ms, numbers or strings) are required, and `end - start` must be at most `profiles.maxWindow` (24 h) for every method: Pyroscope's `max_query_length` is 1 day, for the metadata methods too, but a window whose nanoseconds overflow int64 slips past it. Bodies are at most 64 KiB (413).
 
-**Responses** are Pyroscope's JSON, streamed, with `Cache-Control: no-store`, and gzip when the request accepts it (a 1 h flame graph at 16k nodes: 0.89 MB, 0.13 MB gzipped). int64 fields are JSON strings. Errors are Connect-shaped, `{"code", "message"}`:
+**Responses** are Pyroscope's JSON with `Cache-Control: no-store`. The viewer's `Accept-Encoding` is sent upstream and Pyroscope's gzip is relayed unchanged (a 1 h flame graph at 16k nodes: 0.89 MB, 0.13 MB gzipped). The answer is read in full before it is sent, so a timeout is always a 504. int64 fields are JSON strings. Errors are Connect-shaped, `{"code", "message"}`:
 
 | Status | Code | When |
 |---|---|---|
@@ -149,8 +149,7 @@ Anything else gets 400. Other matchers (`pod`, `k8s_deployment_name`, `env`) onl
 | 403 | `permission_denied` | No `get pods` in the namespace |
 | 404 | `not_found` | Unknown method, or no `profiles` block configured |
 | 413 | `resource_exhausted` | Body over 64 KiB |
-| 415 | `invalid_argument` | Not `application/json` |
-| 502 | `unavailable` | Pyroscope unreachable or 5xx, or the access review failed |
+| 502 | `unavailable` | Pyroscope unreachable, 5xx or an answer over 32 MiB, or the access review failed |
 | 504 | `deadline_exceeded` | Over `profiles.timeout` |
 
 Profile data is not cached. The viewer's token never reaches Pyroscope.

@@ -26,8 +26,9 @@ type Config struct {
 type ProfilesConfig struct {
 	URL     string   `json:"url"`
 	Timeout Duration `json:"timeout"`
-	// MaxWindow bounds every Select call and each side of a Diff: Pyroscope's
-	// max_query_length.
+	// MaxWindow bounds every call and each side of a Diff. Keep it at or
+	// under Pyroscope's max_query_length, which an overflowing window can
+	// slip past.
 	MaxWindow Duration `json:"maxWindow"`
 	// MaxNodes is the ceiling for maxNodes; larger requests are clamped.
 	MaxNodes int64 `json:"maxNodes"`
@@ -214,9 +215,12 @@ func (p *ProfilesConfig) validate() error {
 	if p.MaxNodes == 0 {
 		p.MaxNodes = 16384
 	}
-	if p.MaxNodes < 1 {
-		return fmt.Errorf("maxNodes must be positive")
+	if p.MaxNodes < 1 || p.Timeout.Duration < 0 || p.MaxWindow.Duration < 0 {
+		return fmt.Errorf("timeout, maxWindow and maxNodes must be positive")
 	}
+	// A service listed under two namespaces would show its unlabelled
+	// profiles in both.
+	listedIn := map[string]string{}
 	for ns, services := range p.LegacyServices {
 		if !isNamespace(ns) {
 			return fmt.Errorf("legacyServices: %q is not a namespace name", ns)
@@ -225,6 +229,10 @@ func (p *ProfilesConfig) validate() error {
 			if s == "" {
 				return fmt.Errorf("legacyServices[%s]: empty service name", ns)
 			}
+			if other, ok := listedIn[s]; ok && other != ns {
+				return fmt.Errorf("legacyServices: %q is listed under both %s and %s", s, other, ns)
+			}
+			listedIn[s] = ns
 		}
 	}
 	return nil

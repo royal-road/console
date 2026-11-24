@@ -137,8 +137,3 @@ func (p *selectorParser) quoted() (string, error) {
 	}
 	return "", fmt.Errorf("unterminated string")
 }
-
-func isLabelName(s string) bool {
-	p := selectorParser{s: s}
-	return s != "" && p.labelName() == s
-}

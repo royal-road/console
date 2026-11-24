@@ -6,11 +6,10 @@ Newest first. One entry per work package from `FORK.md`.
 
 - trace-federator serves profiles from Pyroscope for observe-plugin's Profiles tab: `GET /profiles/{namespace}/scopes` and `POST /profiles/{namespace}/{method}` for `SelectMergeStacktraces`, `SelectSeries`, `Diff`, `Series`, `LabelNames` and `LabelValues`, passed to Pyroscope's Connect API.
   - Access: `get pods` in the namespace, checked with the viewer's token (SelfSubjectAccessReview, cached 60 s). No new ClusterRole.
-  - Every selector is parsed strictly and must contain `namespace="<ns>"`, or `service_name="<s>"` for a service that `profiles.legacyServices` lists for that namespace. The second shape gets `namespace=~"|<ns>"` appended, so it covers profiles from before and after the services carry `namespace` and `k8s_deployment_name` labels and never reaches another namespace's.
-  - Requests are rebuilt from an allowlist of fields per method. `maxNodes` defaults to 8192 and is clamped to 16384. Every window is 24 h at most, because Pyroscope's `max_query_length` (1 day) applies to the metadata calls too. `Series`, `LabelNames` and `LabelValues` take exactly one matcher. `SelectSeries` refuses `stackTraceSelector`, which Pyroscope ignores there. Bodies are at most 64 KiB.
-  - Responses are streamed with `Cache-Control: no-store` and gzipped on request; errors are Connect-shaped `{code, message}`. The upstream timeout is 20 s (504).
-  - Metrics: endpoint labels `profiles-scopes` and `profiles-<method>`, and store `pyroscope` in the backend metrics.
-  - Tested against a fake Pyroscope (access matrix, 25 selector-injection attempts, limits, error mapping, gzip) and, read-only, against production Pyroscope 2.4.4 through a port-forward: a 1 h flame graph at 16k nodes was 888 KB, 131 KB gzipped.
+  - Every selector must name the namespace, or a service `profiles.legacyServices` lists for it (profiles from before the `namespace` label).
+  - Requests are rebuilt from typed structs with limits on window, `maxNodes` and points. Errors are Connect-shaped `{code, message}`.
+  - Rules, limits and errors: [the federator README](trace-federator/README.md#profiles).
+  - Tested against a fake Pyroscope and, read-only, against production Pyroscope 2.4.4 through a port-forward.
 - `royal-road/deploy/tracing`: `20-config.yaml` gains the `profiles` block (`legacyServices: royal-road: [royalroad.website]`); the README covers the Pyroscope NetworkPolicy entry the federator needs, access and rollback.
 
 ## Unified Observe: traces and alerts

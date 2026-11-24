@@ -84,7 +84,7 @@ The `profiles` block in `20-config.yaml` turns on `/profiles/*`. Without it thos
    ```
 
 2. Access needs no new role: a user sees a namespace's profiles when they can `get pods` there.
-3. `legacyServices` lists, per namespace, the `service_name` values whose profiles have no `namespace` label yet. Today that is `royalroad.website` in `royal-road`. Once a service sends `namespace` and `k8s_deployment_name` (from its `PYROSCOPE_LABELS`), its profiles match the labelled shape. Remove its entry when the labels have been there for Pyroscope's retention.
+3. `legacyServices` lists, per namespace, the `service_name` values whose profiles have no `namespace` label yet. Today that is `royalroad.website` in `royal-road`. When to remove an entry is in [the federator README](../../trace-federator/README.md#profiles).
 4. Roll back by removing the `profiles` block and restarting the federator. Nothing else depends on it.
 
 The rules for selectors, windows and sizes are in [the federator README](../../trace-federator/README.md#profiles).

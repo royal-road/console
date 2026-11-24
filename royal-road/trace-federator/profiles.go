@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
+	"math"
 	"net/http"
 	"regexp"
 	"slices"
@@ -25,13 +25,16 @@ import (
 //
 // The viewer needs get on pods in {namespace}. Every selector in the request
 // must be scoped to {namespace} (checkSelector); requests are rebuilt from
-// an allowlist of fields, so nothing outside it reaches Pyroscope. Errors use
+// typed structs, so nothing outside them reaches Pyroscope. Errors use
 // Pyroscope's Connect shape {code, message}. See README.md, "Profiles".
 
 const (
 	profilesMaxBody      = 64 << 10
 	profilesDefaultNodes = 8192 // Pyroscope's own default
 	profilesMaxPoints    = 2000
+	// profilesMaxAnswer bounds the buffered answer; the maxNodes ceiling
+	// keeps real ones near 1.6 MB.
+	profilesMaxAnswer = 32 << 20
 )
 
 type profilesProxy struct {
@@ -40,7 +43,7 @@ type profilesProxy struct {
 }
 
 // profileMethods maps each passed-through method to its request builder.
-var profileMethods = map[string]func(p *profilesProxy, ns string, body json.RawMessage) (any, error){
+var profileMethods = map[string]func(p *profilesProxy, ns string, body []byte) (any, error){
 	"SelectMergeStacktraces": (*profilesProxy).selectMerge,
 	"SelectSeries":           (*profilesProxy).selectSeries,
 	"Diff":                   (*profilesProxy).diff,
@@ -154,11 +157,7 @@ func (s *server) profileQuery(w http.ResponseWriter, r *http.Request) {
 	p.forward(w, r, method, upstream)
 }
 
-func readProfileBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, error) {
-	mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if mt != "application/json" {
-		return nil, &connectError{http.StatusUnsupportedMediaType, "invalid_argument", "Content-Type must be application/json"}
-	}
+func readProfileBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, profilesMaxBody))
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
@@ -170,7 +169,10 @@ func readProfileBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, e
 	return b, nil
 }
 
-// forward POSTs the rebuilt request to Pyroscope and streams the answer.
+// forward POSTs the rebuilt request to Pyroscope and relays the answer. The
+// viewer's Accept-Encoding goes upstream, so Pyroscope's gzip reaches the
+// viewer as is. The answer is read in full before the status is written, so
+// a timeout mid-body is a 504, not a truncated 200.
 func (p *profilesProxy) forward(w http.ResponseWriter, r *http.Request, method string, body []byte) {
 	ctx, cancel := context.WithTimeout(r.Context(), p.cfg.Timeout.Duration)
 	defer cancel()
@@ -180,24 +182,41 @@ func (p *profilesProxy) forward(w http.ResponseWriter, r *http.Request, method s
 		metricBackendRequests.inc("pyroscope", outcome)
 		metricBackendDuration.observe(time.Since(began).Seconds(), "pyroscope")
 	}()
-	timedOut := func() bool { return errors.Is(ctx.Err(), context.DeadlineExceeded) }
+	fail := func(err error) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			outcome = "timeout"
+			err = &connectError{http.StatusGatewayTimeout, "deadline_exceeded", fmt.Sprintf("Pyroscope did not answer within %s", p.cfg.Timeout.Duration)}
+		}
+		writeConnectError(w, err)
+	}
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.URL+"/querier.v1.QuerierService/"+method, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if ae := r.Header.Get("Accept-Encoding"); ae != "" {
+		req.Header.Set("Accept-Encoding", ae)
+	}
 	resp, err := p.client.Do(req)
 	if err != nil {
-		if timedOut() {
-			outcome = "timeout"
-			writeConnectError(w, &connectError{http.StatusGatewayTimeout, "deadline_exceeded", fmt.Sprintf("Pyroscope did not answer within %s", p.cfg.Timeout.Duration)})
-			return
-		}
-		writeConnectError(w, fmt.Errorf("Pyroscope unreachable: %v", err))
+		fail(fmt.Errorf("Pyroscope unreachable: %v", err))
 		return
 	}
 	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, profilesMaxAnswer+1))
+	if err != nil {
+		fail(fmt.Errorf("reading Pyroscope's answer: %v", err))
+		return
+	}
+	if len(data) > profilesMaxAnswer {
+		writeConnectError(w, fmt.Errorf("Pyroscope's answer is over %d bytes", profilesMaxAnswer))
+		return
+	}
 
 	if resp.StatusCode/100 != 2 {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		if resp.Header.Get("Content-Encoding") == "gzip" {
+			if zr, err := gzip.NewReader(bytes.NewReader(data)); err == nil {
+				data, _ = io.ReadAll(io.LimitReader(zr, 64<<10))
+			}
+		}
 		var upstream struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -220,33 +239,14 @@ func (p *profilesProxy) forward(w http.ResponseWriter, r *http.Request, method s
 	h := w.Header()
 	h.Set("Content-Type", "application/json")
 	h.Set("Cache-Control", "no-store")
-	h.Add("Vary", "Accept-Encoding")
-	var out io.Writer = w
-	if acceptsGzip(r) {
-		h.Set("Content-Encoding", "gzip")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
-		out = gz
+	h.Set("Vary", "Accept-Encoding")
+	if ce := resp.Header.Get("Content-Encoding"); ce != "" {
+		h.Set("Content-Encoding", ce)
 	}
+	h.Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		if timedOut() {
-			outcome = "timeout"
-		}
-		slog.Warn("profiles response cut short", "method", method, "err", err)
-		return
-	}
+	_, _ = w.Write(data)
 	outcome = "ok"
-}
-
-func acceptsGzip(r *http.Request) bool {
-	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
-		coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
-		if strings.EqualFold(strings.TrimSpace(coding), "gzip") {
-			return strings.ReplaceAll(strings.TrimSpace(params), " ", "") != "q=0"
-		}
-	}
-	return false
 }
 
 // checkSelector enforces the namespace scope on one selector and returns it
@@ -282,41 +282,18 @@ func (p *profilesProxy) checkSelector(ns, raw string) (string, error) {
 	return "", invalid("selector must contain namespace=%s", allowed)
 }
 
-// Request bodies are decoded field by field from an allowlist, with exact
-// (case-sensitive) names, and rebuilt; unknown fields are rejected so that
-// fields Pyroscope adds later cannot bypass these checks.
-
-type fields map[string]json.RawMessage
-
-func decodeFields(raw json.RawMessage, what string, allowed ...string) (fields, error) {
-	var f fields
-	if err := json.Unmarshal(raw, &f); err != nil || f == nil {
-		return nil, invalid("%s must be a JSON object", what)
+// decodeRequest decodes a request into its typed struct. Unknown fields
+// (matched as encoding/json does) get 400, so the plugin hears about a field
+// that would otherwise be dropped; the request is then rebuilt from the
+// struct, so nothing outside it reaches Pyroscope.
+func decodeRequest(body []byte, into any) error {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(into); err != nil {
+		return invalid("request: %v", err)
 	}
-	for k := range f {
-		if !slices.Contains(allowed, k) {
-			return nil, invalid("%s: field %q is not allowed (allowed: %s)", what, k, strings.Join(allowed, ", "))
-		}
-	}
-	return f, nil
-}
-
-func (f fields) get(name string, into any) error {
-	raw, ok := f[name]
-	if !ok {
-		return nil
-	}
-	if err := json.Unmarshal(raw, into); err != nil {
-		return invalid("field %s: %v", name, err)
-	}
-	return nil
-}
-
-func (f fields) getAll(into map[string]any) error {
-	for name, ptr := range into {
-		if err := f.get(name, ptr); err != nil {
-			return err
-		}
+	if _, err := dec.Token(); err != io.EOF {
+		return invalid("request: data after the JSON object")
 	}
 	return nil
 }
@@ -338,12 +315,15 @@ func (n *int64JSON) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// maxUnixMilli keeps end within what Pyroscope can turn into nanoseconds.
+const maxUnixMilli = int64JSON(math.MaxInt64 / int64(time.Millisecond))
+
 func checkWindow(start, end int64JSON, limit time.Duration) error {
-	if start <= 0 || end <= start {
+	if start <= 0 || end <= start || end > maxUnixMilli {
 		return invalid("start and end are required, in Unix milliseconds, with end after start")
 	}
-	if time.Duration(end-start)*time.Millisecond > limit {
-		return invalid("window over %s (Pyroscope's limit)", formatDuration(limit))
+	if int64(end-start) > limit.Milliseconds() {
+		return invalid("window over %s (profiles.maxWindow)", formatDuration(limit))
 	}
 	return nil
 }
@@ -372,112 +352,73 @@ type selectMergeRequest struct {
 	StackTraceSelector *stackTraceSelector `json:"stackTraceSelector,omitempty"`
 }
 
-func (p *profilesProxy) selectMerge(ns string, body json.RawMessage) (any, error) {
-	return p.selectMergeSide(ns, body, "request")
+func (p *profilesProxy) selectMerge(ns string, body []byte) (any, error) {
+	var req selectMergeRequest
+	if err := decodeRequest(body, &req); err != nil {
+		return nil, err
+	}
+	return &req, p.checkMerge(ns, &req, "request")
 }
 
-func (p *profilesProxy) selectMergeSide(ns string, body json.RawMessage, what string) (*selectMergeRequest, error) {
-	f, err := decodeFields(body, what, "profileTypeID", "labelSelector", "start", "end", "maxNodes", "stackTraceSelector")
-	if err != nil {
-		return nil, err
-	}
-	var req selectMergeRequest
-	if err := f.getAll(map[string]any{"profileTypeID": &req.ProfileTypeID, "labelSelector": &req.LabelSelector,
-		"start": &req.Start, "end": &req.End, "maxNodes": &req.MaxNodes}); err != nil {
-		return nil, err
-	}
+func (p *profilesProxy) checkMerge(ns string, req *selectMergeRequest, what string) error {
 	if req.ProfileTypeID == "" {
-		return nil, invalid("%s: profileTypeID is required", what)
+		return invalid("%s: profileTypeID is required", what)
 	}
+	var err error
 	if req.LabelSelector, err = p.checkSelector(ns, req.LabelSelector); err != nil {
-		return nil, err
+		return err
 	}
 	if err := checkWindow(req.Start, req.End, p.cfg.MaxWindow.Duration); err != nil {
-		return nil, err
+		return err
 	}
-	switch {
-	case req.MaxNodes < 0:
-		return nil, invalid("%s: maxNodes must not be negative", what)
-	case req.MaxNodes == 0:
+	if req.MaxNodes <= 0 {
 		req.MaxNodes = int64JSON(min(profilesDefaultNodes, p.cfg.MaxNodes))
-	default:
-		req.MaxNodes = min(req.MaxNodes, int64JSON(p.cfg.MaxNodes))
 	}
-	if raw, ok := f["stackTraceSelector"]; ok {
-		sf, err := decodeFields(raw, "stackTraceSelector", "callSite")
-		if err != nil {
-			return nil, err
-		}
-		var sites []json.RawMessage
-		if err := sf.get("callSite", &sites); err != nil {
-			return nil, err
-		}
-		req.StackTraceSelector = &stackTraceSelector{CallSite: []location{}}
-		for _, site := range sites {
-			lf, err := decodeFields(site, "callSite entry", "name")
-			if err != nil {
-				return nil, err
-			}
-			var loc location
-			if err := lf.get("name", &loc.Name); err != nil {
-				return nil, err
-			}
-			req.StackTraceSelector.CallSite = append(req.StackTraceSelector.CallSite, loc)
-		}
-	}
-	return &req, nil
+	req.MaxNodes = min(req.MaxNodes, int64JSON(p.cfg.MaxNodes))
+	return nil
 }
 
-func (p *profilesProxy) diff(ns string, body json.RawMessage) (any, error) {
-	f, err := decodeFields(body, "request", "left", "right")
-	if err != nil {
-		return nil, err
-	}
-	if f["left"] == nil || f["right"] == nil {
-		return nil, invalid("left and right are required")
-	}
-	var out struct {
+func (p *profilesProxy) diff(ns string, body []byte) (any, error) {
+	var req struct {
 		Left  *selectMergeRequest `json:"left"`
 		Right *selectMergeRequest `json:"right"`
 	}
-	if out.Left, err = p.selectMergeSide(ns, f["left"], "left"); err != nil {
+	if err := decodeRequest(body, &req); err != nil {
 		return nil, err
 	}
-	if out.Right, err = p.selectMergeSide(ns, f["right"], "right"); err != nil {
+	if req.Left == nil || req.Right == nil {
+		return nil, invalid("left and right are required")
+	}
+	if err := p.checkMerge(ns, req.Left, "left"); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return req, p.checkMerge(ns, req.Right, "right")
 }
 
 var aggregations = []string{"TIME_SERIES_AGGREGATION_TYPE_SUM", "TIME_SERIES_AGGREGATION_TYPE_AVERAGE"}
 
-func (p *profilesProxy) selectSeries(ns string, body json.RawMessage) (any, error) {
-	var probe fields
-	if json.Unmarshal(body, &probe) == nil && probe["stackTraceSelector"] != nil {
-		return nil, invalid("SelectSeries ignores stackTraceSelector; use SelectMergeStacktraces per time bucket")
-	}
-	f, err := decodeFields(body, "request", "profileTypeID", "labelSelector", "start", "end", "step", "groupBy", "aggregation", "limit")
-	if err != nil {
-		return nil, err
-	}
-	var req struct {
-		ProfileTypeID string    `json:"profileTypeID"`
-		LabelSelector string    `json:"labelSelector"`
-		Start         int64JSON `json:"start"`
-		End           int64JSON `json:"end"`
-		Step          float64   `json:"step"`
-		GroupBy       []string  `json:"groupBy,omitempty"`
-		Aggregation   string    `json:"aggregation,omitempty"`
-		Limit         int64JSON `json:"limit,omitempty"`
-	}
-	if err := f.getAll(map[string]any{"profileTypeID": &req.ProfileTypeID, "labelSelector": &req.LabelSelector,
-		"start": &req.Start, "end": &req.End, "step": &req.Step, "groupBy": &req.GroupBy,
-		"aggregation": &req.Aggregation, "limit": &req.Limit}); err != nil {
+// selectSeriesRequest has no stackTraceSelector: Pyroscope ignores it here,
+// so it gets 400 as an unknown field.
+type selectSeriesRequest struct {
+	ProfileTypeID string    `json:"profileTypeID"`
+	LabelSelector string    `json:"labelSelector"`
+	Start         int64JSON `json:"start"`
+	End           int64JSON `json:"end"`
+	Step          float64   `json:"step"`
+	GroupBy       []string  `json:"groupBy,omitempty"`
+	Aggregation   string    `json:"aggregation,omitempty"`
+	Limit         int64JSON `json:"limit,omitempty"`
+}
+
+func (p *profilesProxy) selectSeries(ns string, body []byte) (any, error) {
+	var req selectSeriesRequest
+	if err := decodeRequest(body, &req); err != nil {
 		return nil, err
 	}
 	if req.ProfileTypeID == "" {
 		return nil, invalid("profileTypeID is required")
 	}
+	var err error
 	if req.LabelSelector, err = p.checkSelector(ns, req.LabelSelector); err != nil {
 		return nil, err
 	}
@@ -490,74 +431,65 @@ func (p *profilesProxy) selectSeries(ns string, body json.RawMessage) (any, erro
 	if float64(req.End-req.Start)/1000/req.Step > profilesMaxPoints {
 		return nil, invalid("more than %d points: raise step", profilesMaxPoints)
 	}
-	for _, l := range req.GroupBy {
-		if !isLabelName(l) {
-			return nil, invalid("groupBy: %q is not a label name", l)
-		}
-	}
 	if req.Aggregation != "" && !slices.Contains(aggregations, req.Aggregation) {
 		return nil, invalid("aggregation must be one of %s", strings.Join(aggregations, ", "))
 	}
 	if req.Limit < 0 {
 		return nil, invalid("limit must not be negative")
 	}
-	return req, nil
-}
-
-// metadataRequest is Series, LabelNames and LabelValues. Pyroscope answers
-// nothing when given more than one matcher (they are not ORed), so exactly
-// one is required.
-type metadataRequest struct {
-	Name       string    `json:"name,omitempty"`
-	Matchers   []string  `json:"matchers"`
-	LabelNames []string  `json:"labelNames,omitempty"`
-	Start      int64JSON `json:"start"`
-	End        int64JSON `json:"end"`
-}
-
-func (p *profilesProxy) metadata(ns string, body json.RawMessage, allowed ...string) (*metadataRequest, error) {
-	f, err := decodeFields(body, "request", append(allowed, "matchers", "start", "end")...)
-	if err != nil {
-		return nil, err
-	}
-	var req metadataRequest
-	if err := f.getAll(map[string]any{"name": &req.Name, "matchers": &req.Matchers, "labelNames": &req.LabelNames,
-		"start": &req.Start, "end": &req.End}); err != nil {
-		return nil, err
-	}
-	if len(req.Matchers) != 1 {
-		return nil, invalid("exactly one matcher is required (Pyroscope does not OR them)")
-	}
-	if req.Matchers[0], err = p.checkSelector(ns, req.Matchers[0]); err != nil {
-		return nil, err
-	}
-	// max_query_length applies to the metadata calls too (checked live).
-	if err := checkWindow(req.Start, req.End, p.cfg.MaxWindow.Duration); err != nil {
-		return nil, err
-	}
-	for _, l := range req.LabelNames {
-		if !isLabelName(l) {
-			return nil, invalid("labelNames: %q is not a label name", l)
-		}
-	}
 	return &req, nil
 }
 
-func (p *profilesProxy) series(ns string, body json.RawMessage) (any, error) {
-	return p.metadata(ns, body, "labelNames")
+// metadataRequest is what Series, LabelNames and LabelValues share.
+// Pyroscope answers nothing when given more than one matcher (they are not
+// ORed), so exactly one is required.
+type metadataRequest struct {
+	Matchers []string  `json:"matchers"`
+	Start    int64JSON `json:"start"`
+	End      int64JSON `json:"end"`
 }
 
-func (p *profilesProxy) labelNames(ns string, body json.RawMessage) (any, error) {
-	return p.metadata(ns, body)
+func (p *profilesProxy) checkMetadata(ns string, req *metadataRequest) error {
+	if len(req.Matchers) != 1 {
+		return invalid("exactly one matcher is required (Pyroscope does not OR them)")
+	}
+	var err error
+	if req.Matchers[0], err = p.checkSelector(ns, req.Matchers[0]); err != nil {
+		return err
+	}
+	// max_query_length applies to the metadata calls too (checked live).
+	return checkWindow(req.Start, req.End, p.cfg.MaxWindow.Duration)
 }
 
-func (p *profilesProxy) labelValues(ns string, body json.RawMessage) (any, error) {
-	req, err := p.metadata(ns, body, "name")
-	if err != nil {
+func (p *profilesProxy) series(ns string, body []byte) (any, error) {
+	var req struct {
+		metadataRequest
+		LabelNames []string `json:"labelNames,omitempty"`
+	}
+	if err := decodeRequest(body, &req); err != nil {
 		return nil, err
 	}
-	if !isLabelName(req.Name) {
-		return nil, invalid("name must be a label name")
+	return &req, p.checkMetadata(ns, &req.metadataRequest)
+}
+
+func (p *profilesProxy) labelNames(ns string, body []byte) (any, error) {
+	var req metadataRequest
+	if err := decodeRequest(body, &req); err != nil {
+		return nil, err
 	}
-	return req, nil
+	return &req, p.checkMetadata(ns, &req)
+}
+
+func (p *profilesProxy) labelValues(ns string, body []byte) (any, error) {
+	var req struct {
+		Name string `json:"name"`
+		metadataRequest
+	}
+	if err := decodeRequest(body, &req); err != nil {
+		return nil, err
+	}
+	if req.Name == "" {
+		return nil, invalid("name is required")
+	}
+	return &req, p.checkMetadata(ns, &req.metadataRequest)
 }

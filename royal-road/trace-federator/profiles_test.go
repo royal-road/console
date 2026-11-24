@@ -23,8 +23,8 @@ type fakePyroscope struct {
 }
 
 type pyroCall struct {
-	Path, ContentType, Authorization string
-	Body                             map[string]any
+	Path, ContentType, Authorization, AcceptEncoding string
+	Body                                             map[string]any
 }
 
 func (f *fakePyroscope) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +32,7 @@ func (f *fakePyroscope) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var parsed map[string]any
 	_ = json.Unmarshal(body, &parsed)
 	f.mu.Lock()
-	f.calls = append(f.calls, pyroCall{r.URL.Path, r.Header.Get("Content-Type"), r.Header.Get("Authorization"), parsed})
+	f.calls = append(f.calls, pyroCall{r.URL.Path, r.Header.Get("Content-Type"), r.Header.Get("Authorization"), r.Header.Get("Accept-Encoding"), parsed})
 	h := f.handle
 	f.mu.Unlock()
 	if h != nil && h(w, r, body) {
@@ -391,11 +391,14 @@ func TestProfilesRequestLimits(t *testing.T) {
 		{"maxNodes 0 becomes 8192", "SelectMergeStacktraces", with(base, "maxNodes", 0), 200, wantField("maxNodes", 8192.0)},
 		{"maxNodes clamped", "SelectMergeStacktraces", with(base, "maxNodes", 100000), 200, wantField("maxNodes", 16384.0)},
 		{"maxNodes 1 kept", "SelectMergeStacktraces", with(base, "maxNodes", "1"), 200, wantField("maxNodes", 1.0)},
-		{"maxNodes negative", "SelectMergeStacktraces", with(base, "maxNodes", -1), 400, nil},
+		{"maxNodes negative becomes 8192", "SelectMergeStacktraces", with(base, "maxNodes", -1), 200, wantField("maxNodes", 8192.0)},
 		{"int64 strings", "SelectMergeStacktraces", with(base, "start", fmt.Sprint(hourEnd-1000), "end", fmt.Sprint(hourEnd)), 200, wantField("start", float64(hourEnd-1000))},
 		{"window 24h", "SelectMergeStacktraces", with(base, "start", hourEnd-day), 200, nil},
 		{"window over 24h", "SelectMergeStacktraces", with(base, "start", hourEnd-day-1), 400, nil},
 		{"end before start", "SelectMergeStacktraces", with(base, "start", hourEnd+1), 400, nil},
+		{"window overflowing nanoseconds", "SelectMergeStacktraces", with(base, "start", 1, "end", int64(18446744073711)), 400, nil},
+		{"window overflowing milliseconds", "Series", with(meta, "start", 1, "end", "9223372036854775807"), 400, nil},
+		{"end past int64 nanoseconds", "SelectMergeStacktraces", with(base, "start", int64(maxUnixMilli)-1000, "end", int64(maxUnixMilli)+1), 400, nil},
 		{"no start", "SelectMergeStacktraces", with(base, "start", nil), 400, nil},
 		{"no profile type", "SelectMergeStacktraces", with(base, "profileTypeID", nil), 400, nil},
 		{"callSite", "SelectMergeStacktraces", with(base, "stackTraceSelector", map[string]any{"callSite": []any{map[string]any{"name": "main"}, map[string]any{"name": "Handle"}}}), 200,
@@ -411,6 +414,7 @@ func TestProfilesRequestLimits(t *testing.T) {
 		{"proto field name", "SelectMergeStacktraces", with(base, "labelSelector", nil, "label_selector", `{namespace="other-ns"}`), 400, nil},
 		{"not an object", "SelectMergeStacktraces", `[1]`, 400, nil},
 		{"invalid JSON", "SelectMergeStacktraces", `{"start":`, 400, nil},
+		{"trailing data", "SelectMergeStacktraces", `{"profileTypeID":"x"} {}`, 400, nil},
 		{"Diff window per side", "Diff", map[string]any{"left": base, "right": with(base, "start", hourEnd-2*day)}, 400, nil},
 		{"Diff side missing", "Diff", map[string]any{"left": base}, 400, nil},
 		{"Diff clamps both sides", "Diff", map[string]any{"left": with(base, "maxNodes", 99999), "right": base}, 200,
@@ -425,7 +429,6 @@ func TestProfilesRequestLimits(t *testing.T) {
 		{"SelectSeries 2000 points", "SelectSeries", with(seriesBase, "step", 1, "start", hourEnd-2000_000), 200, nil},
 		{"SelectSeries 2001 points", "SelectSeries", with(seriesBase, "step", 1, "start", hourEnd-2001_000), 400, nil},
 		{"SelectSeries bad aggregation", "SelectSeries", with(seriesBase, "aggregation", "MAX"), 400, nil},
-		{"SelectSeries bad groupBy", "SelectSeries", with(seriesBase, "groupBy", []string{"pod name"}), 400, nil},
 		{"Series", "Series", with(meta, "labelNames", []string{"pod", "__profile_type__"}), 200, nil},
 		{"Series over 24h", "Series", with(meta, "start", hourEnd-day-1), 400, nil},
 		{"LabelValues over 24h", "LabelValues", with(meta, "name", "pod", "start", hourEnd-day-1), 400, nil},
@@ -462,12 +465,6 @@ func TestProfilesRequestLimits(t *testing.T) {
 	if r := doProfiles(t, "POST", url, "viewer", big); r.Code != 413 || r.json(t)["code"] != "resource_exhausted" {
 		t.Errorf("large body: %d %s", r.Code, r.Body)
 	}
-	if r := doProfiles(t, "POST", url, "viewer", base, "Content-Type", "text/plain"); r.Code != 415 || r.json(t)["code"] != "invalid_argument" {
-		t.Errorf("text/plain: %d %s", r.Code, r.Body)
-	}
-	if r := doProfiles(t, "POST", url, "viewer", base, "Content-Type", "application/json; charset=utf-8"); r.Code != 200 {
-		t.Errorf("json with charset: %d %s", r.Code, r.Body)
-	}
 }
 
 func wantField(name string, want any) func(t *testing.T, sent map[string]any) {
@@ -481,8 +478,18 @@ func wantField(name string, want any) func(t *testing.T, sent map[string]any) {
 
 func TestProfilesPassthrough(t *testing.T) {
 	flame := `{"flamegraph":{"names":["total"` + strings.Repeat(`,"System.Threading.Tasks.Task.ExecuteWithThreadLocal"`, 2000) + `],"levels":[],"total":"12345678901234","maxSelf":"1"}}`
+	var gzipped bytes.Buffer
+	zw := gzip.NewWriter(&gzipped)
+	_, _ = io.WriteString(zw, flame)
+	_ = zw.Close()
+	// Like Pyroscope: gzip when the request accepts it.
 	pyro := &fakePyroscope{handle: func(w http.ResponseWriter, r *http.Request, body []byte) bool {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			_, _ = w.Write(gzipped.Bytes())
+			return true
+		}
 		_, _ = io.WriteString(w, flame)
 		return true
 	}}
@@ -507,20 +514,17 @@ func TestProfilesPassthrough(t *testing.T) {
 		t.Error("the viewer's token reached Pyroscope")
 	}
 
+	// The viewer's Accept-Encoding goes upstream and Pyroscope's gzip comes
+	// back untouched.
 	r = doProfiles(t, "POST", url, "viewer", body, "Accept-Encoding", "br, gzip")
-	if r.Header.Get("Content-Encoding") != "gzip" {
-		t.Fatalf("not gzipped: %v", r.Header)
+	if r.Code != 200 || r.Header.Get("Content-Encoding") != "gzip" || !bytes.Equal(r.Body, gzipped.Bytes()) {
+		t.Fatalf("gzip: %d %v, %d bytes for %d", r.Code, r.Header, len(r.Body), gzipped.Len())
 	}
-	zr, err := gzip.NewReader(bytes.NewReader(r.Body))
-	if err != nil {
-		t.Fatal(err)
+	if got := pyro.last(t).AcceptEncoding; got != "br, gzip" {
+		t.Errorf("upstream Accept-Encoding %q", got)
 	}
-	plain, _ := io.ReadAll(zr)
-	if string(plain) != flame || len(r.Body) >= len(flame)/4 {
-		t.Errorf("gzip: %d bytes for %d", len(r.Body), len(flame))
-	}
-	if r := doProfiles(t, "POST", url, "viewer", body, "Accept-Encoding", "gzip;q=0"); r.Header.Get("Content-Encoding") != "" {
-		t.Error("gzip;q=0 was gzipped")
+	if r.Header.Get("Vary") != "Accept-Encoding" || r.Header.Get("Cache-Control") != "no-store" {
+		t.Errorf("headers %v", r.Header)
 	}
 
 	resp, err := http.Get(srv.URL + "/metrics")
@@ -555,6 +559,18 @@ func TestProfilesUpstreamErrors(t *testing.T) {
 		case "html":
 			w.WriteHeader(404)
 			_, _ = io.WriteString(w, `<html>not here</html>`)
+		case "invalid-gzip":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.WriteHeader(400)
+			zw := gzip.NewWriter(w)
+			_, _ = io.WriteString(zw, `{"code":"invalid_argument","message":"gzipped"}`)
+			_ = zw.Close()
+		case "stall":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"flamegraph":{"names":["total"`)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
 		case "slow":
 			select {
 			case <-time.After(2 * time.Second):
@@ -577,12 +593,14 @@ func TestProfilesUpstreamErrors(t *testing.T) {
 		message    string
 	}{
 		{"invalid", "invalid_argument", 400, "invalid query: profile type not found"},
+		{"invalid-gzip", "invalid_argument", 400, "gzipped"},
+		{"stall", "deadline_exceeded", 504, "Pyroscope did not answer within 200ms"},
 		{"5xx", "unavailable", 502, "Pyroscope answered HTTP 503: no healthy querier"},
 		{"html", "unavailable", 502, "Pyroscope answered HTTP 404: <html>not here</html>"},
 		{"slow", "deadline_exceeded", 504, "Pyroscope did not answer within 200ms"},
 	} {
 		mode = tc.mode
-		r := doProfiles(t, "POST", url, "viewer", body)
+		r := doProfiles(t, "POST", url, "viewer", body, "Accept-Encoding", "gzip")
 		got := r.json(t)
 		if r.Code != tc.status || got["code"] != tc.code || got["message"] != tc.message {
 			t.Errorf("%s: %d %s", tc.mode, r.Code, r.Body)
@@ -636,7 +654,9 @@ func TestProfilesConfig(t *testing.T) {
 	if p.URL != "http://pyroscope:4040" || p.Timeout.Duration != 20*time.Second || p.MaxWindow.Duration != 24*time.Hour || p.MaxNodes != 16384 {
 		t.Errorf("defaults %+v", p)
 	}
-	for _, bad := range []string{`{}`, `{"url":"http://x","legacyServices":{"Not A Namespace":["s"]}}`, `{"url":"http://x","legacyServices":{"ns":[""]}}`, `{"url":"http://x","maxNodes":-1}`, `{"url":"http://x","typo":1}`} {
+	for _, bad := range []string{`{}`, `{"url":"http://x","legacyServices":{"Not A Namespace":["s"]}}`, `{"url":"http://x","legacyServices":{"ns":[""]}}`, `{"url":"http://x","maxNodes":-1}`, `{"url":"http://x","typo":1}`,
+		`{"url":"http://x","timeout":"-20s"}`, `{"url":"http://x","maxWindow":"-24h"}`,
+		`{"url":"http://x","legacyServices":{"royal-road":["royalroad.website"],"other-ns":["royalroad.website"]}}`} {
 		if _, err := load(bad); err == nil {
 			t.Errorf("%s accepted", bad)
 		}
