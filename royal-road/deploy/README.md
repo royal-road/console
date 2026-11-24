@@ -682,8 +682,9 @@ investigate a workload. Alerts, metrics, logs, Sentry errors and rollouts
 are scoped to the workload and share one time window, which travels in the
 URL (`from`/`to`). It adds:
 
-- **Observe › Overview** (`/observe`): the triage home, with workloads, their
-  health and firing alerts grouped by workload, and **Observe › Explorer**
+- **Observe › Overview** (`/observe/overview`; `/observe` redirects there): the
+  triage home, with workloads, their health and firing alerts grouped by
+  workload, and **Observe › Explorer**
   (`/observe/explore`): search across workloads, pods, namespaces and alert
   names.
 - An **Observe** tab on Deployments, StatefulSets, DaemonSets, Pods and
