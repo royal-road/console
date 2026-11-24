@@ -112,6 +112,14 @@ independent of the cutover. See [`tracing/README.md`](tracing/README.md), and
 [`crds/README.md`](crds/README.md#sentryprojectbinding) for the
 `SentryProjectBinding` CRD that scopes Sentry data.
 
+## Alert notifications
+
+Discord alert messages with the rule's summary, identifying labels, a chart
+of the rule with its threshold and a link to the workload's Observe tab come
+from `alert-renderer`, a webhook receiver next to vmalertmanager in
+`openshift-monitoring`. See [`alert-renderer/README.md`](alert-renderer/README.md)
+for the manifests and the receiver change in the infrastructure repository.
+
 ## Branding
 
 The masthead, the About modal, the browser tab title and the favicon show

@@ -1,0 +1,100 @@
+# alert-renderer: Alertmanager webhook receiver that posts readable Discord
+# messages with a chart of the rule (royal-road/alert-renderer). It runs next
+# to vmalertmanager and reuses its Discord webhook Secret
+# `alertmanager-discord-webhook` (key `url`); nothing new to create.
+#
+# Replace <sha> with the image tag CI pushed (short commit SHA of main) and
+# <console-base-address> with the console Deployment's BRIDGE_BASE_ADDRESS
+# (scheme and host, no trailing slash). When the console answers on more than
+# one host name, that is the canonical one: OIDC logins return to it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-renderer
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/name: alert-renderer
+    app.kubernetes.io/part-of: alerting
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alert-renderer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alert-renderer
+        app.kubernetes.io/part-of: alerting
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alert-renderer
+          image: ghcr.io/royal-road/alert-renderer:<sha>
+          env:
+            - name: CONSOLE_URL
+              value: <console-base-address>
+            - name: VMALERT_URL
+              value: http://vmalert-vm-victoria-metrics-k8s-stack.openshift-monitoring.svc:8080/vmalert
+            - name: VMSELECT_URL
+              value: http://vmselect-vm-victoria-metrics-k8s-stack.openshift-monitoring.svc:8481/select/0/prometheus
+            - name: DISCORD_WEBHOOK_URL_FILE
+              value: /etc/alert-renderer/discord/url
+            - name: CHART_LOOKBACK
+              value: 1h
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: discord
+              mountPath: /etc/alert-renderer/discord
+              readOnly: true
+      volumes:
+        - name: discord
+          secret:
+            secretName: alertmanager-discord-webhook
+            defaultMode: 0440
+            items:
+              - key: url
+                path: url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-renderer
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/name: alert-renderer
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: alert-renderer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,58 @@
+# Only vmalertmanager may call alert-renderer. alert-renderer may reach
+# vmalert (the rule), vmselect (the chart data), DNS, and HTTPS outside the
+# cluster's private ranges (Discord; a plain NetworkPolicy cannot name a
+# host). Kubelet probes come from the node and are not affected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alert-renderer
+  namespace: openshift-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alert-renderer
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmalertmanager
+              app.kubernetes.io/instance: vm-victoria-metrics-k8s-stack
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmalert
+              app.kubernetes.io/instance: vm-victoria-metrics-k8s-stack
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmselect
+              app.kubernetes.io/instance: vm-victoria-metrics-k8s-stack
+      ports:
+        - protocol: TCP
+          port: 8481
+    # DNS through kube-dns or node-local-dns (a link-local address), so any destination.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
