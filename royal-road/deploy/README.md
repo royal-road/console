@@ -703,13 +703,13 @@ static plugins) and reads data through the bridge with the user's own token:
 | Data | Through | Without it |
 |---|---|---|
 | Metrics, alerts, alerting rules and alert history (`ALERTS`) | the bridge's monitoring proxies (`/api/prometheus`, `/api/prometheus-tenancy`), as monitoring-plugin | No golden signals or alerts |
-| Silences: list, and **Acknowledge** (create) | the bridge's Alertmanager proxies (`/api/alertmanager/api/v2/silences`, `/api/alertmanager-tenancy/api/v2/silences?namespace=<ns>`), as monitoring-plugin | No acknowledged state; Acknowledge fails |
+| Silences: list, and **Acknowledge** (create) | the bridge's Alertmanager proxies (`/api/alertmanager/api/v2/silences`, `/api/alertmanager-tenancy/api/v2/silences?namespace=<ns>`), as monitoring-plugin | No acknowledged state; Acknowledge fails. **Production:** the tenancy path is not enforced yet (`:9092` reaches the cluster-wide check, so namespace-scoped users get 403; it needs the chain below), and silence create through `/api/alertmanager` has not been tried as a cluster admin |
 | Logs | logging-view-plugin's proxy, `/api/proxy/plugin/logging-view-plugin/backend/` (see [Logging plugin](#logging-plugin)) | Log panels can't load |
 | Traces | distributed-tracing-console-plugin's proxy to trace-federator, `/api/proxy/plugin/distributed-tracing-console-plugin/backend/` (see [Traces](#traces)). The trace scatter sends `slices=12`; an older federator ignores it and returns the most recent traces only. | No traces on the Traces tab and the trace lane |
 | Sentry errors (optional) | sentry-plugin's backend, `/api/proxy/plugin/sentry-plugin/backend/` | Errors show "not connected" |
 
 So it needs no `BRIDGE_PLUGIN_PROXY` entry and no NetworkPolicy of its own.
-Every path above is one the bridge or another plugin already serves (see
+Every path above is one the bridge or another plugin already routes (see
 [Monitoring endpoints](#monitoring-endpoints) for the hosts behind the
 monitoring proxies). The tenancy paths must enforce the namespace: for
 silences, the `:9092` target must check the user's access to `?namespace=`
