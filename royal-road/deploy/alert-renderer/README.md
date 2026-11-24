@@ -31,7 +31,10 @@ It passes the `restricted` Pod Security level.
 
 1. Replace `<sha>` with the image tag CI pushed
    (`ghcr.io/royal-road/alert-renderer`, short SHA of main) and
-   `<console-host>` with the console's host. Then apply both files:
+   `<console-base-address>` with the console Deployment's `BRIDGE_BASE_ADDRESS`
+   (`kubectl -n openshift-console get deploy openshift-console -o yaml`). If
+   the console has several host names, use that one, so links in Discord land
+   on the host that logins return to. Then apply both files:
 
    ```sh
    kubectl apply -f royal-road/deploy/alert-renderer/

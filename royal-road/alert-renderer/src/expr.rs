@@ -417,6 +417,52 @@ fn lex(e: &str) -> Vec<Token> {
     out
 }
 
+/// `expr` on one line, without comments and without the label lists of
+/// `by`, `without`, `on`, `ignoring` and `group_left|right`, which matter to
+/// the engine but not to someone reading the condition.
+pub fn condensed(expr: &str) -> String {
+    const CLAUSES: &[&str] = &["by", "without", "on", "ignoring", "group_left", "group_right"];
+    let e = strip_comments(expr);
+    let toks = lex(&e);
+    let mut out = String::new();
+    let mut prev: Option<&Token> = None;
+    let mut gap = false;
+    let mut i = 0;
+    while i < toks.len() {
+        let t = &toks[i];
+        let opens_list = toks.get(i + 1).is_some_and(|n| &e[n.start..n.end] == "(");
+        if matches!(&t.kind, Tok::Word(w) if CLAUSES.contains(&w.as_str())) && opens_list {
+            gap |= prev.is_some_and(|p| e[p.end..t.start].contains(char::is_whitespace));
+            let mut depth = 0;
+            i += 1;
+            while i < toks.len() {
+                match toks[i].kind {
+                    Tok::Open => depth += 1,
+                    Tok::Close => depth -= 1,
+                    _ => {}
+                }
+                i += 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            continue;
+        }
+        if let Some(p) = prev {
+            let spaced = gap || e[p.end..t.start].contains(char::is_whitespace);
+            let call = matches!(p.kind, Tok::Word(_)) && &e[t.start..t.end] == "(";
+            if spaced && !call && p.kind != Tok::Open && t.kind != Tok::Close {
+                out.push(' ');
+            }
+        }
+        out.push_str(&e[t.start..t.end]);
+        prev = Some(t);
+        gap = false;
+        i += 1;
+    }
+    out
+}
+
 /// Removes `# comments`, which run to the end of the line outside strings.
 fn strip_comments(e: &str) -> String {
     let mut out = String::with_capacity(e.len());
@@ -825,6 +871,18 @@ mod tests {
             }
         }
         depth == 0
+    }
+
+    #[test]
+    fn condensed_drops_label_lists_comments_and_line_breaks() {
+        assert_eq!(
+            condensed(
+                "(\n  sum by (ns, svc) (rate(req{status=~\"5..\"}[5m]))\n  /\n  sum by (ns, svc) (rate(req[5m]))\n) > 0.02 # high\nand on (ns, svc)\nsum(rate(req[5m])) by (ns) > 1"
+            ),
+            "(sum(rate(req{status=~\"5..\"}[5m])) / sum(rate(req[5m]))) > 0.02 and sum(rate(req[5m])) > 1"
+        );
+        assert_eq!(condensed("a / on(x) group_left(y) b"), "a / b");
+        assert_eq!(condensed("max by (m) (running) < max by (m) (desired)"), "max(running) < max(desired)");
     }
 
     #[test]

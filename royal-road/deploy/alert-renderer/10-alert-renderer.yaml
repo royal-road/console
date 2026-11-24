@@ -4,7 +4,9 @@
 # `alertmanager-discord-webhook` (key `url`); nothing new to create.
 #
 # Replace <sha> with the image tag CI pushed (short commit SHA of main) and
-# <console-host> with the console's public host name.
+# <console-base-address> with the console Deployment's BRIDGE_BASE_ADDRESS
+# (scheme and host, no trailing slash). When the console answers on more than
+# one host name, that is the canonical one: OIDC logins return to it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,7 +44,7 @@ spec:
           image: ghcr.io/royal-road/alert-renderer:<sha>
           env:
             - name: CONSOLE_URL
-              value: https://<console-host>
+              value: <console-base-address>
             - name: VMALERT_URL
               value: http://vmalert-vm-victoria-metrics-k8s-stack.openshift-monitoring.svc:8080/vmalert
             - name: VMSELECT_URL

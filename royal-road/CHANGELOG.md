@@ -6,9 +6,9 @@ Newest first. One entry per work package from `FORK.md`.
 
 - `royal-road/alert-renderer/`: a Rust Alertmanager webhook receiver. For each notification it posts Discord embeds instead of the `label = value` list and the vmalert pod-IP link:
   - one embed per rule, with severity (from the rule's label) and colour, summary and description;
-  - identifying labels as inline fields, scrape labels folded and noise dropped;
+  - identifying labels as inline fields; of the scrape labels only `job` is kept, in the footer;
   - since/lasted and the rule's condition;
-  - grouped alerts listed one per line;
+  - grouped alerts listed one per line, each by what sets it apart and linked to its Observe tab;
   - a link to the workload's Observe tab (`focus=alert:`, window from 30 minutes before), the namespace's Observe tab when only `namespace` is present, or Observe › Overview;
   - a PNG chart of the rule. The expression comes from vmalert, the data from vmselect. A top-level comparison becomes a threshold line (a dashed series for vector-vs-vector), the alert's own series are coloured and the firing interval is shaded.
 

@@ -153,27 +153,39 @@ fn description(s: &Section, console: &str, budget: usize) -> String {
             text.push_str(&format!("**{}**\n", annotation(summary)));
         }
         let common_keys: Vec<&str> = common(s).iter().map(|(k, _)| *k).collect();
+        let first_start = s.alerts.iter().filter_map(|a| a.starts_ms()).min();
         for a in s.alerts.iter().take(MAX_LISTED) {
+            // What sets this alert apart, as the link into Observe: its own
+            // summary, else the labels the others do not share. A single
+            // label goes in bare (`relay-0`, not `pod=relay-0`).
             let what = match a.annotations.get("summary").filter(|_| same("summary").is_none()) {
-                Some(summary) => annotation(summary),
+                Some(summary) => annotation(summary).replace(['[', ']'], ""),
                 None => {
                     let (id, _) = labels::classify(&a.labels);
-                    let parts: Vec<String> = id
-                        .iter()
-                        .filter(|(k, _)| !common_keys.contains(k))
-                        .take(3)
-                        .map(|(k, v)| format!("{k}={}", escape(v)))
-                        .collect();
-                    if parts.is_empty() { escape(a.alertname()) } else { parts.join(", ") }
+                    let own: Vec<(&str, &str)> =
+                        id.into_iter().filter(|(k, _)| !common_keys.contains(k)).take(3).collect();
+                    match own.as_slice() {
+                        [] => escape(a.alertname()),
+                        [(_, v)] => escape(v),
+                        many => many
+                            .iter()
+                            .map(|(k, v)| format!("{} {}", labels::title(k), escape(v)))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    }
                 }
             };
+            // The Since field already gives the first start; repeat a start
+            // only when it differs.
             let when = match (a.firing(), a.starts_ms(), a.ended_ms()) {
-                (true, Some(t), _) => format!("since {}", ts(t)),
-                (false, Some(t), Some(e)) => format!("resolved after {}", time::human_duration(e - t)),
+                (true, Some(t), _) if first_start.is_some_and(|f| t - f >= 60_000) => {
+                    format!(" · since {}", ts(t))
+                }
+                (false, Some(t), Some(e)) => format!(" · resolved after {}", time::human_duration(e - t)),
                 _ => String::new(),
             };
             text.push_str(&format!(
-                "• {} · {when} · [Observe]({})\n",
+                "• [{}]({}){when}\n",
                 truncate(&what, 160),
                 labels::console_link(console, a)
             ));
@@ -203,7 +215,8 @@ fn fields(s: &Section, value_cap: usize) -> Vec<Value> {
         s.alerts.iter().map(|a| a.ended_ms()).collect::<Option<Vec<_>>>().and_then(|e| e.into_iter().max());
     match (s.firing(), starts, ends) {
         (0, Some(t), Some(e)) => {
-            out.push(json!({"name": "Lasted", "value": format!("{} (ended {})", time::human_duration(e - t), ts(e)), "inline": true}))
+            out.push(json!({"name": "Lasted", "value": time::human_duration(e - t), "inline": true}));
+            out.push(json!({"name": "Ended", "value": ts(e), "inline": true}));
         }
         (_, Some(t), _) => out.push(json!({"name": "Since", "value": ts(t), "inline": true})),
         _ => {}
@@ -214,10 +227,13 @@ fn fields(s: &Section, value_cap: usize) -> Vec<Value> {
     out
 }
 
+/// The scrape job, if every alert shares it. The other folded labels
+/// (instance IP:port, endpoint, the exporter's own pod) never help a reader.
 fn footer(s: &Section) -> String {
     let (_, folded) = labels::classify(&s.alerts[0].labels);
     let mut parts: Vec<String> = folded
         .iter()
+        .filter(|(k, _)| *k == "job")
         .filter(|(k, v)| s.alerts.iter().all(|a| a.labels.get(*k).map(String::as_str) == Some(*v)))
         .map(|(k, v)| format!("{k}={v}"))
         .collect();
@@ -475,7 +491,9 @@ mod tests {
         assert_eq!(e["title"], "Resolved: KubePodCrashLooping");
         assert_eq!(e["color"], GREEN);
         let lasted = e["fields"].as_array().unwrap().iter().find(|f| f["name"] == "Lasted").unwrap();
-        assert_eq!(lasted["value"], "20m (ended <t:1795515600:R>)");
+        assert_eq!(lasted["value"], "20m");
+        let ended = e["fields"].as_array().unwrap().iter().find(|f| f["name"] == "Ended").unwrap();
+        assert_eq!(ended["value"], "<t:1795515600:R>");
         assert!(
             e["url"]
                 .as_str()
@@ -500,8 +518,26 @@ mod tests {
             e["fields"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["Namespace", "Container", "Since"], "pod differs, so it is listed, not a field");
         let d = e["description"].as_str().unwrap();
-        assert_eq!(d.lines().filter(|l| l.starts_with("• Pod sentry/c-")).count(), 3);
-        assert!(d.contains("[Observe](https://console.example.com/k8s/ns/sentry/pods/c-1/observe?"));
+        assert_eq!(d.lines().filter(|l| l.starts_with("• [Pod sentry/c-")).count(), 3);
+        assert!(d.contains(
+            "[Pod sentry/c-1 is crash looping](https://console.example.com/k8s/ns/sentry/pods/c-1/observe?"
+        ));
+        assert!(!d.contains("since"), "same start as the Since field");
+    }
+
+    #[test]
+    fn a_group_lists_each_alert_by_what_differs_as_its_link() {
+        let a = alerts(include_str!("../testdata/payloads/sentry-crashloop-group.json"));
+        let d = message(&sections(&a), CONSOLE, 0)["embeds"][0]["description"].as_str().unwrap().to_string();
+        let items: Vec<&str> = d.lines().filter(|l| l.starts_with("• ")).collect();
+        assert_eq!(items.len(), 3);
+        assert!(
+            items[0].starts_with("• [sentry-snuba-consumer-"),
+            "the pod name alone, no pod=: {}",
+            items[0]
+        );
+        assert!(items.iter().all(|l| !l.split("](").next().unwrap().contains('=')), "no label=value text");
+        assert!(items.iter().all(|l| l.ends_with(')')), "same start as the Since field, so no since");
     }
 
     #[test]

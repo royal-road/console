@@ -13,17 +13,20 @@ bullet and links to the vmalert pod by IP. alert-renderer posts this instead:
 - **Summary and description** from the annotations, then **Investigate** and
   **Runbook** (`runbook_url`) links.
 - **Identifying labels** as compact inline fields: namespace, workload, pod,
-  service, ingress, and the rule's own labels. Scrape labels (`job`,
-  `instance`, `endpoint`…) are folded into the footer. `prometheus`,
+  service, ingress, and the rule's own labels. Of the scrape labels (`job`,
+  `instance`, `endpoint`…) only `job` is shown, in the footer. `prometheus`,
   `alertgroup` and the like are dropped.
-- **Since / Lasted** as Discord timestamps, and the rule's **condition**,
-  for example `nginx_ingress_controller_requests > 0.02`.
+- **Since**, or **Lasted** and **Ended**, as Discord timestamps, and the
+  rule's **condition**: the expression on one line without comments and
+  label lists (`by (…)`, `on (…)`) when it is at most 200 characters, else in
+  words, for example `nginx_ingress_controller_requests > 0.02`.
 - **A chart** of the rule's expression from the alert's start minus
   `CHART_LOOKBACK` to now, at most 12 hours. A resolved alert's chart ends
   `CHART_LOOKBACK/2` after it resolved.
 - **Grouped alerts:** one embed per rule. Labels shared by all alerts become
-  fields. Each alert gets one line with what tells it apart, how long it has
-  been firing, and its own Observe link.
+  fields. Each alert gets one line: what tells it apart (the pod name alone
+  when only the pod differs) as the link to its Observe tab, and its start only
+  when it differs from the Since field.
 
 Previews of real alerts are in the task's `mockups/discord/`, and
 [`dev/preview.py`](dev/preview.py) makes them.
@@ -87,7 +90,7 @@ says why.
 kube-state-metrics adds its own `pod`, `container` and `service` to series
 that name no pod (`kube_deployment_*`, `kube_cronjob_*`). When `job` and
 `container` are both `kube-state-metrics`, those three labels are treated as
-scrape labels: folded into the footer and never used as the workload.
+scrape labels: never shown and never used as the workload.
 
 ## Discord
 

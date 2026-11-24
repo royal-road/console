@@ -93,8 +93,16 @@ fn sources() -> Sources {
     Sources::new(&required("VMALERT_URL"), &required("VMSELECT_URL"), Duration::from_secs(5))
 }
 
-/// The rule's condition in words: `running < desired`, `nginx_requests > 0.02`.
-fn condition(plan: &expr::ChartPlan) -> Option<String> {
+/// Longest rule expression shown as written; past it, a summary.
+const CONDITION_MAX: usize = 200;
+
+/// The rule's condition: the expression itself without label lists when it
+/// is short, else in words (`running < desired`, `nginx_requests > 0.02`).
+fn condition(expr: &str, plan: &expr::ChartPlan) -> Option<String> {
+    let full = expr::condensed(expr);
+    if !full.is_empty() && full.chars().count() <= CONDITION_MAX {
+        return Some(full);
+    }
     let lhs = plan.queries.iter().map(|q| chart::query_name(q)).collect::<Vec<_>>().join(" | ");
     let parts: Vec<String> = plan
         .thresholds
@@ -117,7 +125,7 @@ fn chart_for(
 ) -> Result<(Vec<u8>, Option<String>), String> {
     let expr = src.expression(section.alerts[0], deadline).map_err(|e| format!("rule unavailable ({e})"))?;
     let plan = expr::plan(&expr);
-    let cond = condition(&plan);
+    let cond = condition(&expr, &plan);
     let starts = section.alerts.iter().filter_map(|a| a.starts_ms()).min().unwrap_or(now);
     let end = if section.alerts.iter().any(|a| a.firing()) {
         now
@@ -408,18 +416,17 @@ mod tests {
     }
 
     #[test]
-    fn conditions_in_words() {
-        let p = expr::plan(
-            "max by (m) (gpustack:model_running_instances) < max by (m) (gpustack:model_desired_instances)",
-        );
+    fn conditions_as_written_when_short_else_in_words() {
+        let c = |e: &str| condition(e, &expr::plan(e));
         assert_eq!(
-            condition(&p).as_deref(),
-            Some("gpustack:model_running_instances < gpustack:model_desired_instances")
+            c("max by (m) (gpustack:model_running_instances) < max by (m) (gpustack:model_desired_instances)")
+                .as_deref(),
+            Some("max(gpustack:model_running_instances) < max(gpustack:model_desired_instances)")
         );
-        let p = expr::plan(
-            "sum(rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m])) / sum(rate(nginx_ingress_controller_requests[5m])) > 0.02",
-        );
-        assert_eq!(condition(&p).as_deref(), Some("nginx_ingress_controller_requests > 0.02"));
-        assert_eq!(condition(&expr::plan("vector(1)")), None);
+        let ratio = "sum(rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m])) / sum(rate(nginx_ingress_controller_requests[5m])) > 0.02";
+        assert_eq!(c(ratio).as_deref(), Some(ratio), "a ratio is not shown as a bare counter");
+        let long = format!("{} > 0.02", ["sum(rate(nginx_ingress_controller_requests[5m]))"; 5].join(" + "));
+        assert_eq!(c(&long).as_deref(), Some("nginx_ingress_controller_requests > 0.02"));
+        assert_eq!(c("absent(up{job=\"mgr\"})").as_deref(), Some("absent(up{job=\"mgr\"})"));
     }
 }

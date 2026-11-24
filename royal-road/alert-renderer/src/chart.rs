@@ -13,13 +13,13 @@ use crate::time::{self, Millis};
 
 static FONT: &[u8] = include_bytes!("../assets/DejaVuSans-subset.ttf");
 
-const W: u32 = 900;
-const H: u32 = 380;
-const LEFT: f32 = 92.0;
+const W: u32 = 800;
+const H: u32 = 400;
+const LEFT: f32 = 100.0;
 const RIGHT: f32 = 24.0;
-const TOP: f32 = 64.0;
-const BOTTOM: f32 = 44.0;
-const TEXT_PX: f32 = 21.0;
+const TOP: f32 = 72.0;
+const BOTTOM: f32 = 48.0;
+const TEXT_PX: f32 = 24.0;
 
 /// Discord's dark embed background, so the image blends in.
 const BG: Rgb = Rgb(0x2b, 0x2d, 0x31);
@@ -495,7 +495,7 @@ pub fn render(spec: &Spec) -> Result<Vec<u8>, String> {
     let notes_w = c.text_width(&notes, TEXT_PX - 3.0) + 24.0;
     let placed = legend_layout(&legend.iter().map(|(_, w)| *w).collect::<Vec<_>>(), notes_w);
     let rows = placed.iter().map(|(_, r)| r + 1).max().unwrap_or(1);
-    let top = TOP + 30.0 * (rows - 1) as f32;
+    let top = TOP + 34.0 * (rows - 1) as f32;
     let (plot_l, plot_r, plot_t, plot_b) = (LEFT, W as f32 - RIGHT, top, H as f32 - BOTTOM);
     let (t0, t1) = (spec.start as f64, spec.end.max(spec.start + 1) as f64);
     let (y0, y1) = y_range(&lines, &spec.scalars);
@@ -522,7 +522,7 @@ pub fn render(spec: &Spec) -> Result<Vec<u8>, String> {
         c.text(
             &format_value(if v.abs() < step * 1e-9 { 0.0 } else { v }),
             plot_l - 12.0,
-            y + 6.5,
+            y + 8.0,
             TEXT_PX,
             TEXT,
             1.0,
@@ -541,7 +541,7 @@ pub fn render(spec: &Spec) -> Result<Vec<u8>, String> {
         let label = if multi_day && t % 86_400_000 == 0 { time::mmdd(t) } else { time::hhmm(t) };
         let half = c.text_width(&label, TEXT_PX) / 2.0;
         if x + half < W as f32 - 2.0 {
-            c.text(&label, x, plot_b + 28.0, TEXT_PX, TEXT, 0.5);
+            c.text(&label, x, plot_b + 32.0, TEXT_PX, TEXT, 0.5);
         }
         t += tick_s * 1000;
     }
@@ -569,7 +569,7 @@ pub fn render(spec: &Spec) -> Result<Vec<u8>, String> {
         }
     }
 
-    // Scalar thresholds, labelled at the right end.
+    // Scalar thresholds, labelled at the left end.
     for (op, value) in &spec.scalars {
         if !value.is_finite() {
             continue;
@@ -578,27 +578,26 @@ pub fn render(spec: &Spec) -> Result<Vec<u8>, String> {
         c.polyline(&[(plot_l, y), (plot_r, y)], sev, 255, 2.5, false);
         let label = format!("{} {}", op.symbol(), format_value(*value));
         let tw = c.text_width(&label, TEXT_PX);
-        let ly = if y - plot_t > 30.0 { y - 8.0 } else { y + 24.0 };
-        c.rect(plot_r - tw - 14.0, ly - 19.0, tw + 12.0, 25.0, BG, 220);
-        c.text(&label, plot_r - 8.0, ly, TEXT_PX, sev, 1.0);
+        let ly = if y - plot_t > 34.0 { y - 9.0 } else { y + 27.0 };
+        // At the left end: the right end is where the alert's series is.
+        c.rect(plot_l + 2.0, ly - 22.0, tw + 12.0, 29.0, BG, 220);
+        c.text(&label, plot_l + 8.0, ly, TEXT_PX, sev, 0.0);
     }
 
     // Legend across the top, notes on the right of the first row.
     for ((l, _), (x, row)) in legend.iter().zip(&placed) {
-        let ly = 34.0 + 30.0 * *row as f32;
-        c.polyline(&[(*x, ly - 7.0), (x + 18.0, ly - 7.0)], l.colour, 255, 4.0, false);
-        c.text(l.label.as_deref().unwrap_or_default(), x + 26.0, ly, TEXT_PX, TEXT_STRONG, 0.0);
+        let ly = 38.0 + 34.0 * *row as f32;
+        c.polyline(&[(*x, ly - 8.0), (x + 20.0, ly - 8.0)], l.colour, 255, 4.0, false);
+        c.text(l.label.as_deref().unwrap_or_default(), x + 28.0, ly, TEXT_PX, TEXT_STRONG, 0.0);
     }
-    c.text(&notes, plot_r, 34.0, TEXT_PX - 3.0, TEXT, 1.0);
+    c.text(&notes, plot_r, 38.0, TEXT_PX - 3.0, TEXT, 1.0);
     if spec.primary.is_empty() {
-        c.text(
-            "no data in this window",
-            (plot_l + plot_r) / 2.0,
-            (plot_t + plot_b) / 2.0,
-            TEXT_PX + 2.0,
-            TEXT,
-            0.5,
-        );
+        // On a plate, so the firing interval's edge does not run through it.
+        let note = "no data in this window";
+        let (x, y) = ((plot_l + plot_r) / 2.0, (plot_t + plot_b) / 2.0);
+        let tw = c.text_width(note, TEXT_PX + 2.0);
+        c.rect(x - tw / 2.0 - 12.0, y - 26.0, tw + 24.0, 38.0, BG, 255);
+        c.text(note, x, y, TEXT_PX + 2.0, TEXT, 0.5);
     }
 
     c.pixmap.encode_png().map_err(|e| e.to_string())
@@ -694,7 +693,7 @@ mod tests {
         let placed = legend_layout(&[300.0; 8], 200.0);
         let rows: Vec<usize> = placed.iter().map(|(_, r)| *r).collect();
         assert_eq!(rows, [0, 1, 1, 2, 2], "the notes leave room for one entry on the first row");
-        let placed = legend_layout(&[700.0], 200.0);
+        let placed = legend_layout(&[600.0], 200.0);
         assert_eq!(placed, [(LEFT, 1)], "an entry that would run into the notes starts the second row");
     }
 
