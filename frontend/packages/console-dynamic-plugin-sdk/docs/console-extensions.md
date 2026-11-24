@@ -1088,7 +1088,7 @@ Adds a tab to a horizontal nav matching the `contextId`.
 
 | Name | Value Type | Optional | Description |
 | ---- | ---------- | -------- | ----------- |
-| `contextId` | `string` | no | Context ID assigned to the horizontal nav in which the tab will be injected.<br/>Possible values:<br/>- `dev-console-observe` |
+| `contextId` | `string` | no | Context ID assigned to the horizontal nav in which the tab will be injected.<br/>Possible values:<br/>- `dev-console-observe`<br/>- `nodes-list` (the Nodes list page; the tab is selected with the `?tab=<href>` query<br/> parameter instead of a path segment, and its component receives no props) |
 | `name` | `string` | no | The display label of the tab |
 | `href` | `string` | no | The href appended to the existing URL |
 | `component` | `CodeRef<React.ComponentType<PageComponentProps<K8sResourceCommon>>>` | no | Tab content component. |

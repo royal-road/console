@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import type { FC, ReactNode } from 'react';
 import { useMemo, useCallback, useEffect, useState, Suspense } from 'react';
 import { DataViewCheckboxFilter } from '@patternfly/react-data-view';
 import type { DataViewFilterOption } from '@patternfly/react-data-view/dist/esm/DataViewFilters';
@@ -100,6 +100,7 @@ import { getNodeClientCSRs, isCSRResource } from './csr';
 import NodeUptime from './node-dashboard/NodeUptime';
 import NodeGroupEditButton from './NodeGroupEditButton';
 import NodeRoles from './NodeRoles';
+import { NodesListTabs } from './NodesListTabs';
 import { NodeStatusWithExtensions } from './NodeStatus';
 import ClientCSRStatus from './status/CSRStatus';
 import { useCustomNodeActions } from './useCustomNodeActions';
@@ -1040,7 +1041,7 @@ const useWatchResourcesIfAllowed = <R extends K8sResourceCommon[]>(
   return [resources || ([] as R), !checkIsLoading && loaded, loadError];
 };
 
-export const NodesPage: FC<NodesPageProps> = ({ selector }) => {
+const NodesTab: FC<NodesPageProps & { tabBar?: ReactNode }> = ({ selector, tabBar }) => {
   const dispatch = useConsoleDispatch();
   const { t } = useTranslation('console-app');
   const isOpenShift5 = useFlag(FLAG_OPENSHIFT_5);
@@ -1174,6 +1175,7 @@ export const NodesPage: FC<NodesPageProps> = ({ selector }) => {
       <ListPageHeader title={t('Nodes')}>
         <NodeGroupEditButton />
       </ListPageHeader>
+      {tabBar}
       <ListPageBody>
         <NodeList
           data={data}
@@ -1190,6 +1192,10 @@ export const NodesPage: FC<NodesPageProps> = ({ selector }) => {
     </>
   );
 };
+
+export const NodesPage: FC<NodesPageProps> = (props) => (
+  <NodesListTabs renderNodesTab={(tabBar) => <NodesTab {...props} tabBar={tabBar} />} />
+);
 
 type NodesPageProps = {
   selector?: Selector;
