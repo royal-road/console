@@ -2,6 +2,19 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Readable Discord alerts
+
+- `royal-road/alert-renderer/`: a Rust Alertmanager webhook receiver. For each notification it posts Discord embeds instead of the `label = value` list and the vmalert pod-IP link:
+  - one embed per rule, with severity (from the rule's label) and colour, summary and description;
+  - identifying labels as inline fields, scrape labels folded and noise dropped;
+  - since/lasted and the rule's condition;
+  - grouped alerts listed one per line;
+  - a link to the workload's Observe tab (`focus=alert:`, window from 30 minutes before), or observe-plugin's `/observe/alert` route when no workload label is present;
+  - a PNG chart of the rule. The expression comes from vmalert, the data from vmselect. A top-level comparison becomes a threshold line (a dashed series for vector-vs-vector), the alert's own series are coloured and the firing interval is shaded.
+
+  It is drawn in-process with tiny-skia and an embedded font. The message still goes out without the chart when anything fails. The image is `FROM scratch` with one static musl binary (3.4 MB). Unit tests cover the expression planner over all 329 production rule expressions, labels, links, embeds and Discord limits, and the chart. `dev/e2e.sh` runs the binary over HTTP against fake vmalert, vmselect and Discord. `.github/workflows/royal-road-alert-renderer.yml` pushes `ghcr.io/royal-road/alert-renderer`.
+- `royal-road/deploy/alert-renderer/`: Deployment, Service and NetworkPolicy in `openshift-monitoring`, reusing Secret `alertmanager-discord-webhook`, and the receiver change for the infrastructure repository (not applied).
+
 ## Unified Observe
 
 - observe-plugin (royal-road/console-plugins, `plugins/observe/`) turns the separate observability pages into one place to investigate a workload: Observe › Overview and Explorer, an Observe tab on Deployments, StatefulSets, DaemonSets, Pods and Namespaces, a Logs tab on Deployments, StatefulSets and DaemonSets, and alert actions. Alerts, metrics, logs, Sentry errors and rollouts are scoped to the workload and share one time window carried in the URL (`from`/`to`). This fork carries the pieces around it.

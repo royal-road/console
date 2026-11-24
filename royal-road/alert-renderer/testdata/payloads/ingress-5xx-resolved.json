@@ -1,0 +1,44 @@
+{
+ "receiver": "discord_webhook",
+ "status": "resolved",
+ "alerts": [
+  {
+   "status": "resolved",
+   "labels": {
+    "alertgroup": "ingress-nginx-requests",
+    "alertname": "IngressHigh5xxRate",
+    "ingress": "royal-road-admin",
+    "namespace": "royal-road",
+    "prometheus": "openshift-monitoring/k8s",
+    "service": "royalroad-admin",
+    "severity": "warning"
+   },
+   "annotations": {
+    "description": "For 2 minutes, more than 2% of the requests that ingress-nginx routed through Ingress royal-road/royal-road-admin to Service royalroad-admin returned 5xx (5.4% over the last 5 minutes, above 1 request/s). 502, 503 and 504 usually mean the backend pods are not ready, crash-looping or timing out; 500 comes from the application itself. Open the workload's Observe tab in the console to line this up with rollouts, restarts and new errors.",
+    "runbook_url": "https://github.com/royal-road/infrastructure/blob/main/platform/ingress-nginx/README.md#ingresshigh5xxrate",
+    "summary": "royal-road/royal-road-admin: 5.4% of requests to Service royalroad-admin return 5xx"
+   },
+   "startsAt": "2026-11-23T00:47:00Z",
+   "endsAt": "2026-11-23T00:51:30Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=7824240654561902744&alert_id=1",
+   "fingerprint": "b1c2d3e4f5a60718"
+  }
+ ],
+ "groupLabels": {
+  "alertname": "IngressHigh5xxRate"
+ },
+ "commonLabels": {
+  "alertgroup": "ingress-nginx-requests",
+  "alertname": "IngressHigh5xxRate",
+  "ingress": "royal-road-admin",
+  "namespace": "royal-road",
+  "prometheus": "openshift-monitoring/k8s",
+  "service": "royalroad-admin",
+  "severity": "warning"
+ },
+ "commonAnnotations": {},
+ "externalURL": "http://vmalertmanager:9093",
+ "version": "4",
+ "groupKey": "{}/{severity=~\"info|warning|critical\"}:{\"alertname\": \"IngressHigh5xxRate\"}",
+ "truncatedAlerts": 0
+}
