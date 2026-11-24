@@ -55,9 +55,23 @@ trap 'rm -rf "$chartdir"' EXIT
 helm create "$chartdir/demo" >/dev/null
 for ns in helm-a helm-b helm-c; do
   for i in $(seq 0 $((HELM_RELEASES - 1))); do
-    revision=$(helm history "demo-$i" -n "$ns" --max 1 2>/dev/null |
-      awk 'NR == 2 { print $1 }') || revision=0
-    for ((r = ${revision:-0}; r <= HELM_UPGRADES; r++)); do
+    # "<revision> <status>" of the latest revision; empty for a missing release.
+    latest=$(helm history "demo-$i" -n "$ns" --max 1 -o yaml 2>/dev/null |
+      awk '$1 == "revision:" { r = $2 } $1 == "status:" { s = $2 } END { if (r) print r, s }') || true
+    read -r revision status <<<"${latest:-0 missing}"
+    # A run killed mid-command leaves the release pending, and every later
+    # upgrade fails with "another operation is in progress". Clear it first.
+    case $status in
+      pending-install)
+        helm uninstall "demo-$i" -n "$ns" >/dev/null
+        revision=0
+        ;;
+      pending-*)
+        helm rollback "demo-$i" -n "$ns" >/dev/null
+        revision=$((revision + 1))
+        ;;
+    esac
+    for ((r = revision; r <= HELM_UPGRADES; r++)); do
       # replicaCount=0: no pods, so the cluster stays light.
       helm upgrade --install "demo-$i" "$chartdir/demo" -n "$ns" --create-namespace \
         --set replicaCount=0 --set podAnnotations.rev="r$r" >/dev/null
