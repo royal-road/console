@@ -1,5 +1,7 @@
-# openshift/monitoring-plugin: Observe > Alerting, Metrics, Targets, and the
-# legacy dashboards at /monitoring/dashboards (no menu item, patch 0004).
+# openshift/monitoring-plugin: Observe > Metrics, Targets; the Alerting pages
+# at /monitoring/alerts (no menu item, patch 0006: Observe > Alerts in
+# observe-plugin replaces it) and the legacy dashboards at
+# /monitoring/dashboards (no menu item, patch 0004).
 # See "Monitoring plugin" in README.md for how it fits together.
 #
 # Placeholders:

@@ -8,9 +8,11 @@
 #   <sha>                image tag from console-plugins' .github/workflows/observe-plugin.yml
 #
 # The plugin is static files only. It reads data through the bridge with the
-# signed-in user's token: the monitoring proxies, logging-view-plugin's proxy
-# and, if deployed, sentry-plugin's backend. So it needs no ServiceAccount
-# permissions, no BRIDGE_PLUGIN_PROXY entry and no NetworkPolicy of its own.
+# signed-in user's token: the monitoring and Alertmanager proxies (alerts,
+# rules, silences), logging-view-plugin's proxy, distributed-tracing-console-
+# plugin's proxy to trace-federator and, if deployed, sentry-plugin's backend.
+# So it needs no ServiceAccount permissions, no BRIDGE_PLUGIN_PROXY entry and
+# no NetworkPolicy of its own.
 #
 # Plain HTTP inside the cluster, like networking-console-plugin.yaml: only the
 # bridge fetches these files, and browsers get them over the console's HTTPS.

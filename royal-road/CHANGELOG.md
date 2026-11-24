@@ -2,6 +2,12 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Unified Observe: traces and alerts
+
+- monitoring-plugin patch `0006-hide-alerting-nav-item.patch`: observe-plugin's Observe › Alerts replaces the admin Observe › Alerting menu item. Every alert, rule and silence route stays, so links into the upstream pages keep working. Metrics takes Alerting's old anchor; Alerts anchors before Metrics, else Logs, else Traces. The console's own sort gives Overview, Explorer, Dashboards (Perses), Alerts, Metrics, Logs, Traces, Targets for all 325 load orders over the 31 plugin subsets. Roll it out together with an observe-plugin that has the Alerts item, and roll it back with it.
+- trace-federator: `/api/search` accepts `slices=N` (1 to 24). Stores return their most recent matches, so a search over a busy hour returned traces from its last minutes only. With `slices`, each store searches N equal windows with limit `ceil(limit/N)`, and the results are merged, de-duplicated by trace ID and sorted newest first. Without it nothing changes. Observe's trace scatter sends `slices=12`.
+- Deploy README, Observe plugin: the alert, silence and trace paths observe-plugin reads through, all served already, and what the tenancy silence path must enforce for namespace-scoped Acknowledge. The rollback now includes patch 0006.
+
 ## Readable Discord alerts
 
 - `royal-road/alert-renderer/`: a Rust Alertmanager webhook receiver. For each notification it posts Discord embeds instead of the `label = value` list and the vmalert pod-IP link:
