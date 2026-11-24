@@ -398,8 +398,10 @@ the pinned `release-5.0` commit by
 3. Optional: apply `monitoring-dashboard-example.yaml` for a first dashboard.
 4. Roll out the console. Check that
    `https://<console-host>/api/plugins/monitoring-plugin/plugin-manifest.json`
-   returns JSON and that **Observe** lists Alerting, Metrics and Targets
-   (and Dashboards (Perses) with `monitoring-console-plugin`).
+   returns JSON and that **Observe** lists Metrics and Targets (and
+   Dashboards (Perses) with `monitoring-console-plugin`). Patch 0006 hides the
+   Alerting item; observe-plugin's **Alerts** replaces it, and
+   `/monitoring/alerts` still opens.
 
 **Plain HTTP.** The plugin backend serves HTTP on 9443 when it gets no
 `-cert`/`-key`. Only the bridge fetches the plugin, inside the cluster, and
