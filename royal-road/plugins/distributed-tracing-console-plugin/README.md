@@ -44,6 +44,7 @@ To bump:
 | | **Instance selection.** The first instance is preselected even when there are several (the federator lists `all-stores` first). |
 | | **Empty state.** "No Tempo instances yet / create a TempoStack" becomes "No trace stores available", because an empty list from the federator means no access. |
 | | **Locale.** The English locale is regenerated with `npm run i18n`. |
+| `0002-place-traces-in-observe-order.patch` | **Menu position.** Observe › Traces gets an anchor: after Logs, else Metrics, Dashboards (Perses) or observe-plugin's Explorer. Upstream has none, so the console placed Traces by plugin load order and it could head the menu. monitoring-plugin's patch 0005 describes the whole menu order. |
 
 The source store of each span shows without any patch: it is the resource attribute `federation.store` in the span details panel.
 
