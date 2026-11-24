@@ -4,7 +4,7 @@ import type {
   ExtensionK8sGroupModel,
   K8sModel,
 } from '@console/dynamic-plugin-sdk/src/api/common-types';
-import { referenceForExtensionModel } from '@console/internal/module/k8s/k8s';
+import { referenceForModel } from '@console/internal/module/k8s/k8s';
 import { formatNamespacedRouteForResource } from '@console/shared/src/utils/namespace';
 import type { CommandPaletteCommand } from './types';
 
@@ -48,13 +48,6 @@ const getListableModels = (
 const isSameGroupKind = (model: K8sModel, navModel: ExtensionK8sGroupModel): boolean =>
   model.kind === navModel.kind && (model.apiGroup || 'core') === (navModel.group || 'core');
 
-const getModelReference = (model: K8sModel): string =>
-  referenceForExtensionModel({
-    group: model.apiGroup,
-    version: model.apiVersion,
-    kind: model.kind,
-  });
-
 export const getModelPluralLabel = (model: K8sModel, t: TFunction): string =>
   model.labelPluralKey ? t(model.labelPluralKey) : model.labelPlural;
 
@@ -82,7 +75,7 @@ export const buildResourceCommands = ({
   getListableModels(models, groupVersionMap)
     .filter((model) => !navModels.some((navModel) => isSameGroupKind(model, navModel)))
     .map((model) => {
-      const reference = getModelReference(model);
+      const reference = referenceForModel(model);
 
       return {
         type: 'resource',

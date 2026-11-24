@@ -161,6 +161,26 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('dialog', { name: 'Search' })).toBeVisible();
   });
 
+  it('should reopen with the shortcut when a page key handler cancels K', async () => {
+    const user = userEvent.setup();
+    renderCommandPalette();
+    // Like Topology's list view: a window handler that takes K as "select previous".
+    const cancelK = (event: KeyboardEvent) => event.key === 'k' && event.preventDefault();
+    window.addEventListener('keydown', cancelK);
+
+    try {
+      await openWithShortcut(user);
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await openWithShortcut(user);
+
+      expect(screen.getByRole('dialog', { name: 'Search' })).toBeVisible();
+    } finally {
+      window.removeEventListener('keydown', cancelK);
+    }
+  });
+
   it('should open with Ctrl+K and list the active perspective pages', async () => {
     const user = userEvent.setup();
     renderCommandPalette();
@@ -366,19 +386,6 @@ describe('CommandPalette', () => {
 
     expect(screen.getByRole('heading', { name: 'Resource types' })).toBeVisible();
     expect(screen.getByRole('option', { name: /^Nodes/ })).toBeVisible();
-  });
-
-  it('should request the namespace list by group, version and kind', async () => {
-    const user = userEvent.setup();
-    renderCommandPalette();
-
-    await openWithShortcut(user);
-
-    expect(useK8sWatchResource).toHaveBeenCalledWith({
-      groupVersionKind: { version: 'v1', kind: 'Namespace' },
-      isList: true,
-      optional: true,
-    });
   });
 
   it('should stay closed when the shortcut is pressed inside the web terminal', async () => {

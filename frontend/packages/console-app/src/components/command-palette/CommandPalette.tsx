@@ -1,9 +1,8 @@
 import type { FC } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from '@patternfly/react-core';
 import { RhUiSearchIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { isModalOpen } from '@console/internal/components/modals/is-modal-open';
 import {
   getCommandPaletteShortcutLabel,
   isCommandPaletteShortcut,
@@ -12,7 +11,6 @@ import {
 import { CommandPaletteModal } from './CommandPaletteModal';
 
 const isAnotherModalOpen = (): boolean =>
-  isModalOpen() ||
   Array.from(document.querySelectorAll('[aria-modal="true"]')).some(
     (element) => !element.closest('[hidden]'),
   );
@@ -26,20 +24,25 @@ export const CommandPalette: FC = () => {
 
   const close = useCallback(() => setIsOpen(false), []);
 
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+
+  // Capture phase on window, registered once: runs before page handlers, such as
+  // Topology's list view, which would otherwise see the K and cancel the event.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!isCommandPaletteShortcut(event, isMac) || (!isOpen && isAnotherModalOpen())) {
+      if (!isCommandPaletteShortcut(event, isMac) || (!isOpenRef.current && isAnotherModalOpen())) {
         return;
       }
 
       event.preventDefault();
-      setIsOpen(!isOpen);
+      setIsOpen(!isOpenRef.current);
     };
 
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, true);
 
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isMac, isOpen]);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isMac]);
 
   return (
     <>
