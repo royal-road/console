@@ -38,7 +38,6 @@ import type {
 } from '@console/dynamic-plugin-sdk/src/extensions/console-types';
 import type { NodeMetrics } from '@console/internal/actions/ui';
 import { setNodeMetrics } from '@console/internal/actions/ui';
-import ListPageHeader from '@console/internal/components/factory/ListPage/ListPageHeader';
 import { PROMETHEUS_BASE_PATH } from '@console/internal/components/graphs/consts';
 import { getPrometheusURL, PrometheusEndpoint } from '@console/internal/components/graphs/helpers';
 import { useK8sWatchResource } from '@console/internal/components/utils/k8s-watch-hook';
@@ -98,8 +97,8 @@ import { nodeStatus } from '../../status/node';
 import { useIsKubevirtPluginActive } from '../../utils/kubevirt';
 import { getNodeClientCSRs, isCSRResource } from './csr';
 import NodeUptime from './node-dashboard/NodeUptime';
-import NodeGroupEditButton from './NodeGroupEditButton';
 import NodeRoles from './NodeRoles';
+import { NodesListTabs } from './NodesListTabs';
 import { NodeStatusWithExtensions } from './NodeStatus';
 import ClientCSRStatus from './status/CSRStatus';
 import { useCustomNodeActions } from './useCustomNodeActions';
@@ -1040,9 +1039,8 @@ const useWatchResourcesIfAllowed = <R extends K8sResourceCommon[]>(
   return [resources || ([] as R), !checkIsLoading && loaded, loadError];
 };
 
-export const NodesPage: FC<NodesPageProps> = ({ selector }) => {
+const NodesTab: FC<NodesPageProps> = ({ selector }) => {
   const dispatch = useConsoleDispatch();
-  const { t } = useTranslation('console-app');
   const isOpenShift5 = useFlag(FLAG_OPENSHIFT_5);
 
   const [selectedColumns, , columnPreferenceLoaded] = useUserPreference<TableColumnsType>(
@@ -1170,26 +1168,27 @@ export const NodesPage: FC<NodesPageProps> = ({ selector }) => {
   }
 
   return (
-    <>
-      <ListPageHeader title={t('Nodes')}>
-        <NodeGroupEditButton />
-      </ListPageHeader>
-      <ListPageBody>
-        <NodeList
-          data={data}
-          loaded={loaded}
-          loadError={loadError}
-          machineSets={machineSets}
-          controlPlaneMachineSets={controlPlaneMachineSets}
-          machineConfigPools={machineConfigPools}
-          vmsEnabled={isKubevirtPluginActive}
-          selectedColumns={selectedColumns}
-          isOpenShift5={isOpenShift5}
-        />
-      </ListPageBody>
-    </>
+    <ListPageBody>
+      <NodeList
+        data={data}
+        loaded={loaded}
+        loadError={loadError}
+        machineSets={machineSets}
+        controlPlaneMachineSets={controlPlaneMachineSets}
+        machineConfigPools={machineConfigPools}
+        vmsEnabled={isKubevirtPluginActive}
+        selectedColumns={selectedColumns}
+        isOpenShift5={isOpenShift5}
+      />
+    </ListPageBody>
   );
 };
+
+export const NodesPage: FC<NodesPageProps> = (props) => (
+  <NodesListTabs>
+    <NodesTab {...props} />
+  </NodesListTabs>
+);
 
 type NodesPageProps = {
   selector?: Selector;

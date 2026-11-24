@@ -2,6 +2,11 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Nodes list plugin tabs
+
+- Core patch: the Nodes list page (`/k8s/cluster/nodes`) shows `console.tab` extensions with `contextId: 'nodes-list'` as tabs after a built-in Nodes tab, sorted by name. The tab is the `tab` query parameter (`?tab=<href>`), not a path segment, because `/k8s/cluster/nodes/<name>` is the Node details route; no parameter or an unknown one shows Nodes. A tab link clears the other query parameters, such as the node list's filters. A plugin tab renders in place of the node list, under the same "Nodes" header and inside an error boundary, so the list's watches and 30-second metric polling do not run; its component gets no props and owns any extra query parameters next to `tab`. Without such extensions the page renders as before, with no tab bar.
+- The code is `frontend/packages/console-app/src/components/nodes/NodesListTabs.tsx` (exports `NODES_LIST_TAB_CONTEXT_ID`). `NodesPage.tsx` renames its component to `NodesTab`, places the tab bar between the header and the list, and exports a `NodesPage` that wraps it. The SDK's `NavTab` docs list the new context ID.
+
 ## Unified Observe: profiles
 
 - trace-federator serves profiles from Pyroscope for observe-plugin's Profiles tab: `GET /profiles/{namespace}/scopes` and `POST /profiles/{namespace}/{method}` for `SelectMergeStacktraces`, `SelectSeries`, `Diff`, `Series`, `LabelNames` and `LabelValues`, passed to Pyroscope's Connect API.

@@ -38,6 +38,8 @@ export type NavTab = Extension<
     /** Context ID assigned to the horizontal nav in which the tab will be injected.
      * Possible values:
      * - `dev-console-observe`
+     * - `nodes-list` (the Nodes list page; the tab is selected with the `?tab=<href>` query
+     *   parameter instead of a path segment, and its component receives no props)
      */
     contextId: string;
     /** The display label of the tab */
