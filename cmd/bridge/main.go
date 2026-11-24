@@ -505,8 +505,8 @@ func main() {
 		}
 
 		srv.InternalProxiedK8SClientConfig = &rest.Config{
-			Host:      k8sEndpoint.String(),
-			Transport: &http.Transport{TLSClientConfig: serviceProxyTLSConfig},
+			Host:            k8sEndpoint.String(),
+			TLSClientConfig: rest.TLSClientConfig{Insecure: *fK8sModeOffClusterSkipVerifyTLS},
 		}
 
 		if *fK8sModeOffClusterServiceAccountBearerTokenFile != "" {

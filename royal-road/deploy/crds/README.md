@@ -43,8 +43,8 @@ for f in helm/v1beta1/zz_generated.crd-manifests/00_projecthelmchartrepositories
 done
 ```
 
-Then update the pin above and the one in `royal-road/dev/kind-up.sh`. Do not
-edit the files by hand.
+Then update the pin above and the one in `royal-road/dev/seed-cluster.sh`.
+Do not edit the files by hand.
 
 ## OLSConfig
 
