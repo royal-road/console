@@ -50,7 +50,7 @@ jest.mock('react-i18next', () => ({
       if (key === 'devconsole~Alerts') return 'Alerts';
       if (key === 'devconsole~Metrics') return 'Metrics';
       if (key === 'devconsole~All events') return 'All events';
-      if (key === 'devconsole~View dashboards') return 'View dashboards';
+      if (key === 'devconsole~Open Observe tab') return 'Open Observe tab';
       if (key === 'devconsole~No metrics found') return 'No metrics found';
       if (key === 'devconsole~Deployment Configuration metrics are not yet supported.') {
         return 'Deployment Configuration metrics are not yet supported.';
@@ -66,6 +66,7 @@ jest.mock('@console/shared/src/utils/alert-utils', () => ({
 }));
 
 jest.mock('@console/internal/models', () => ({
+  ...jest.requireActual('@console/internal/models'),
   DeploymentConfigModel: { kind: 'DeploymentConfig' },
 }));
 

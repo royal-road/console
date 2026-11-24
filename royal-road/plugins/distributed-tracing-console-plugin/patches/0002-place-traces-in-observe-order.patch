@@ -1,0 +1,14 @@
+diff --git a/web/console-extensions.json b/web/console-extensions.json
+index 16eeb9b..3d7f674 100644
+--- a/web/console-extensions.json
++++ b/web/console-extensions.json
+@@ -6,7 +6,8 @@
+       "name": "Traces",
+       "href": "/observe/traces",
+       "perspective": "admin",
+-      "section": "observe"
++      "section": "observe",
++      "insertAfter": ["monitoring-logs", "metrics", "perses-dashboards", "observe-explorer"]
+     }
+   },
+   {

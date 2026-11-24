@@ -1,0 +1,1647 @@
+[
+ {
+  "name": "AbuseDetectorNotSucceeding",
+  "severity": "warning",
+  "expr": "time() - kube_cronjob_status_last_successful_time{namespace=\"abuse-detection\", cronjob=\"abuse-detector\"} > 2400\n"
+ },
+ {
+  "name": "AggregatedAPIDown",
+  "severity": "warning",
+  "expr": "(1 - max by(name, namespace)(avg_over_time(aggregator_unavailable_apiservice[10m]))) * 100 < 85\n"
+ },
+ {
+  "name": "AggregatedAPIErrors",
+  "severity": "warning",
+  "expr": "sum by(name, namespace)(increase(aggregator_unavailable_apiservice_count[5m])) > 2\n"
+ },
+ {
+  "name": "AlertmanagerClusterCrashlooping",
+  "severity": "critical",
+  "expr": "(\n  count by (namespace,service) (\n    changes(process_start_time_seconds{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[10m]) > 4\n  )\n/\n  count by (namespace,service) (\n    up{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}\n  )\n)\n>= 0.5\n"
+ },
+ {
+  "name": "AlertmanagerClusterDown",
+  "severity": "critical",
+  "expr": "(\n  count by (namespace,service) (\n    avg_over_time(up{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m]) < 0.5\n  )\n/\n  count by (namespace,service) (\n    up{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}\n  )\n)\n>= 0.5\n"
+ },
+ {
+  "name": "AlertmanagerClusterFailedToSendAlerts",
+  "severity": "critical",
+  "expr": "min by (namespace,service) (\n  rate(alertmanager_notifications_failed_total{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m])\n/\n  rate(alertmanager_notifications_total{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m])\n)\n> 0.01\n"
+ },
+ {
+  "name": "AlertmanagerConfigInconsistent",
+  "severity": "critical",
+  "expr": "count by (namespace,service) (\n  count_values by (namespace,service) (\"config_hash\", alertmanager_config_hash{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"})\n)\n!= 1\n"
+ },
+ {
+  "name": "AlertmanagerFailedReload",
+  "severity": "critical",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\nmax_over_time(alertmanager_config_last_reload_successful{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m]) == 0\n"
+ },
+ {
+  "name": "AlertmanagerFailedToSendAlerts",
+  "severity": "warning",
+  "expr": "(\n  rate(alertmanager_notifications_failed_total{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m])\n/\n  rate(alertmanager_notifications_total{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m])\n)\n> 0.01\n"
+ },
+ {
+  "name": "AlertmanagerMembersInconsistent",
+  "severity": "critical",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\n  max_over_time(alertmanager_cluster_members{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m])\n< on (namespace,service) group_left\n  count by (namespace,service) (max_over_time(alertmanager_cluster_members{job=\"alertmanager-main\",namespace=\"openshift-monitoring\"}[5m]))\n"
+ },
+ {
+  "name": "AlertmanagerReceiversNotConfigured",
+  "severity": "warning",
+  "expr": "cluster:alertmanager_routing_enabled:max == 0"
+ },
+ {
+  "name": "AnubisCrowdSecPullsFailing",
+  "severity": "warning",
+  "expr": "sum(rate(anubis_rr_shadow_crowdsec_pulls_total{result=\"error\"}[15m]))\n  / sum(rate(anubis_rr_shadow_crowdsec_pulls_total[15m])) > 0.5\n"
+ },
+ {
+  "name": "CephClusterCriticallyFull",
+  "severity": "critical",
+  "expr": "ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 0.80\n"
+ },
+ {
+  "name": "CephClusterErrorState",
+  "severity": "critical",
+  "expr": "ceph_health_status{job=\"rook-ceph-mgr\"} > 1\n"
+ },
+ {
+  "name": "CephClusterNearFull",
+  "severity": "warning",
+  "expr": "ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 0.75\n"
+ },
+ {
+  "name": "CephClusterReadOnly",
+  "severity": "critical",
+  "expr": "ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes >= 0.85\n"
+ },
+ {
+  "name": "CephClusterWarningState",
+  "severity": "warning",
+  "expr": "ceph_health_status{job=\"rook-ceph-mgr\"} == 1\n"
+ },
+ {
+  "name": "CephDataRecoveryTakingTooLong",
+  "severity": "warning",
+  "expr": "ceph_pg_undersized > 0\n"
+ },
+ {
+  "name": "CephMdsMissingReplicas",
+  "severity": "warning",
+  "expr": "sum(ceph_mds_metadata{job=\"rook-ceph-mgr\"} == 1) < 2\n"
+ },
+ {
+  "name": "CephMgrIsAbsent",
+  "severity": "critical",
+  "expr": "absent(up{job=\"rook-ceph-mgr\"} == 1)\n"
+ },
+ {
+  "name": "CephMgrIsMissingReplicas",
+  "severity": "warning",
+  "expr": "sum(up{job=\"rook-ceph-mgr\"}) < 1\n"
+ },
+ {
+  "name": "CephMonHighNumberOfLeaderChanges",
+  "severity": "warning",
+  "expr": "(ceph_mon_metadata{job=\"rook-ceph-mgr\"} * on (ceph_daemon) group_left() (rate(ceph_mon_num_elections{job=\"rook-ceph-mgr\"}[5m]) * 60)) > 0.95\n"
+ },
+ {
+  "name": "CephMonQuorumAtRisk",
+  "severity": "critical",
+  "expr": "count(ceph_mon_quorum_status{job=\"rook-ceph-mgr\"} == 1) <= ((count(ceph_mon_metadata{job=\"rook-ceph-mgr\"}) % 2) + 1)\n"
+ },
+ {
+  "name": "CephMonVersionMismatch",
+  "severity": "warning",
+  "expr": "count(count(ceph_mon_metadata{job=\"rook-ceph-mgr\"}) by (ceph_version)) > 1\n"
+ },
+ {
+  "name": "CephNodeDown",
+  "severity": "critical",
+  "expr": "cluster:ceph_node_down:join_kube == 0\n"
+ },
+ {
+  "name": "CephOSDCriticallyFull",
+  "severity": "critical",
+  "expr": "(ceph_osd_metadata * on (ceph_daemon) group_right(device_class) (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes)) >= 0.80\n"
+ },
+ {
+  "name": "CephOSDDiskNotResponding",
+  "severity": "critical",
+  "expr": "label_replace((ceph_osd_in == 1 and ceph_osd_up == 0),\"disk\",\"$1\",\"ceph_daemon\",\"osd.(.*)\") + on(ceph_daemon) group_left(host, device) label_replace(ceph_disk_occupation,\"host\",\"$1\",\"exported_instance\",\"(.*)\")\n"
+ },
+ {
+  "name": "CephOSDDiskUnavailable",
+  "severity": "critical",
+  "expr": "label_replace((ceph_osd_in == 0 and ceph_osd_up == 0),\"disk\",\"$1\",\"ceph_daemon\",\"osd.(.*)\") + on(ceph_daemon) group_left(host, device) label_replace(ceph_disk_occupation,\"host\",\"$1\",\"exported_instance\",\"(.*)\")\n"
+ },
+ {
+  "name": "CephOSDNearFull",
+  "severity": "warning",
+  "expr": "(ceph_osd_metadata * on (ceph_daemon) group_right(device_class) (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes)) >= 0.75\n"
+ },
+ {
+  "name": "CephOSDVersionMismatch",
+  "severity": "warning",
+  "expr": "count(count(ceph_osd_metadata{job=\"rook-ceph-mgr\"}) by (ceph_version)) > 1\n"
+ },
+ {
+  "name": "CephPGRepairTakingTooLong",
+  "severity": "warning",
+  "expr": "ceph_pg_inconsistent > 0\n"
+ },
+ {
+  "name": "ClickHouseDNSErrors",
+  "severity": "warning",
+  "expr": "increase(chi_clickhouse_event_DNSError[1m]) > 0 or increase(chi_clickhouse_event_NetworkErrors[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseDataAfterMergeDiffersFromReplica",
+  "severity": "warning",
+  "expr": "increase(chi_clickhouse_event_DataAfterMergeDiffersFromReplica[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseDelayedInsertThrottling",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_DelayedInserts[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseDetachedParts",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_DetachedParts > 0"
+ },
+ {
+  "name": "ClickHouseDiskUsage",
+  "severity": "high",
+  "expr": "(chi_clickhouse_metric_DiskFreeBytes / chi_clickhouse_metric_DiskTotalBytes) < 0.1\nor ( (chi_clickhouse_metric_DiskFreeBytes / chi_clickhouse_metric_DiskTotalBytes) < 0.15 and ALERTS{alertname=\"ClickHouseDiskUsage\",alertstate=\"firing\"} == 1)\n"
+ },
+ {
+  "name": "ClickHouseDistributedConnectionExceptions",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_DistributedConnectionFailAtAll[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseDistributedConnectionRetries",
+  "severity": "warning",
+  "expr": "increase(chi_clickhouse_event_DistributedConnectionFailTry[5m]) > 0"
+ },
+ {
+  "name": "ClickHouseDistributedFilesToInsertHigh",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_DistributedFilesToInsert > 50"
+ },
+ {
+  "name": "ClickHouseDistributedSyncInsertionTimeoutExceeded",
+  "severity": "warning",
+  "expr": "increase(chi_clickhouse_event_DistributedSyncInsertionTimeoutExceeded[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseFileDescriptorReadFailed",
+  "severity": "warning",
+  "expr": "increase(\n  chi_clickhouse_event_ReadBufferFromFileDescriptorReadFailed[1m]\n) > 0"
+ },
+ {
+  "name": "ClickHouseFileDescriptorWriteFailed",
+  "severity": "high",
+  "expr": "increase(\n  chi_clickhouse_event_WriteBufferFromFileDescriptorWriteFailed[1m]\n) > 0"
+ },
+ {
+  "name": "ClickHouseLongestRunningQuery",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_LongestRunningQuery > 600"
+ },
+ {
+  "name": "ClickHouseLowInsertedRowsPerQuery",
+  "severity": "warning",
+  "expr": "increase(chi_clickhouse_event_InsertQuery[1m]) > 0 and (increase(chi_clickhouse_event_InsertedRows[1m]) / increase(chi_clickhouse_event_InsertQuery[1m]) <= 1000)"
+ },
+ {
+  "name": "ClickHouseMaxPartCountForPartition",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_MaxPartCountForPartition > 100"
+ },
+ {
+  "name": "ClickHouseMetricsExporterDown",
+  "severity": "critical",
+  "expr": "up{app='clickhouse-operator'} == 0"
+ },
+ {
+  "name": "ClickHouseMetricsExporterFetchErrors",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_fetch_errors{fetch_type!='system_metrics'} > 0"
+ },
+ {
+  "name": "ClickHouseQueryPreempted",
+  "severity": "warning",
+  "expr": "chi_clickhouse_metric_QueryPreempted > 0"
+ },
+ {
+  "name": "ClickHouseReadonlyReplica",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_ReadonlyReplica > 0"
+ },
+ {
+  "name": "ClickHouseRejectedInsert",
+  "severity": "critical",
+  "expr": "increase(chi_clickhouse_event_RejectedInserts[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseReplicasMaxAbsoluteDelay",
+  "severity": "high",
+  "expr": "chi_clickhouse_metric_ReplicasMaxAbsoluteDelay > 300"
+ },
+ {
+  "name": "ClickHouseReplicatedDataLoss",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_ReplicatedDataLoss[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseReplicatedPartFetchFailureRatio",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_ReplicatedPartFailedFetches[1h])\n  / (\n      (\n        increase(chi_clickhouse_event_ReplicatedPartFetches[1h])\n          or increase(chi_clickhouse_event_ReplicatedPartFailedFetches[1h]) * 0\n      )\n      + increase(chi_clickhouse_event_ReplicatedPartFailedFetches[1h])\n    )\n  > 0.05\n"
+ },
+ {
+  "name": "ClickHouseServerDown",
+  "severity": "critical",
+  "expr": "chi_clickhouse_metric_fetch_errors{fetch_type='system_metrics'} > 0"
+ },
+ {
+  "name": "ClickHouseServerRestartRecently",
+  "severity": "warning",
+  "expr": "chi_clickhouse_metric_Uptime > 1 < 180"
+ },
+ {
+  "name": "ClickHouseSlowRead",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_SlowRead[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseStorageBufferErrorOnFlush",
+  "severity": "high",
+  "expr": "increase(chi_clickhouse_event_StorageBufferErrorOnFlush[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseSystemSettingsChanged",
+  "severity": "warning",
+  "expr": "delta(chi_clickhouse_metric_ChangedSettingsHash[5m]) != 0"
+ },
+ {
+  "name": "ClickHouseTooManyConnections",
+  "severity": "warning",
+  "expr": "chi_clickhouse_metric_HTTPConnection + chi_clickhouse_metric_TCPConnection + chi_clickhouse_metric_MySQLConnection > 100"
+ },
+ {
+  "name": "ClickHouseTooManyMutations",
+  "severity": "high",
+  "expr": "chi_clickhouse_table_mutations > 100"
+ },
+ {
+  "name": "ClickHouseTooManyRunningQueries",
+  "severity": "warning",
+  "expr": "chi_clickhouse_metric_Query > 80"
+ },
+ {
+  "name": "ClickHouseVersionChanged",
+  "severity": "warning",
+  "expr": "delta(chi_clickhouse_metric_VersionInteger[5m]) != 0"
+ },
+ {
+  "name": "ClickHouseZooKeeperHardwareExceptions",
+  "severity": "critical",
+  "expr": "increase(chi_clickhouse_event_ZooKeeperHardwareExceptions[1m]) > 0"
+ },
+ {
+  "name": "ClickHouseZooKeeperSession",
+  "severity": "critical",
+  "expr": "chi_clickhouse_metric_ZooKeeperSession > 1"
+ },
+ {
+  "name": "ClusterMonitoringOperatorReconciliationErrors",
+  "severity": "warning",
+  "expr": "rate(cluster_monitoring_operator_reconcile_errors_total[15m]) * 100 / rate(cluster_monitoring_operator_reconcile_attempts_total[15m]) > 10"
+ },
+ {
+  "name": "CrowdSecAgentDown",
+  "severity": "warning",
+  "expr": "(max(up{namespace=\"crowdsec\", job=\"crowdsec-agent-service\"}) or vector(0)) == 0\n"
+ },
+ {
+  "name": "CrowdSecAgentNotReading",
+  "severity": "warning",
+  "expr": "(sum(rate(anubis_rr_shadow_events_total[15m])) > 0.05)\nand on() ((sum(rate(cs_victorialogssource_hits_total{namespace=\"crowdsec\", source=~\"https://example.com/doc\"}[15m])) or vector(0)) == 0)\n"
+ },
+ {
+  "name": "CrowdSecAgentRestarting",
+  "severity": "warning",
+  "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"crowdsec\", container=\"crowdsec-agent\"}[1h]) > 3\n"
+ },
+ {
+  "name": "CrowdSecDecisionSurge",
+  "severity": "warning",
+  "expr": "sum(cs_active_decisions{namespace=\"crowdsec\"}) > 5000\n"
+ },
+ {
+  "name": "CrowdSecGeoipRefreshNeverSucceeded",
+  "severity": "warning",
+  "expr": "absent(kube_cronjob_status_last_successful_time{namespace=\"crowdsec\", cronjob=\"crowdsec-geoip-refresh\"})\n"
+ },
+ {
+  "name": "CrowdSecGeoipRefreshNotSucceeding",
+  "severity": "warning",
+  "expr": "time() - kube_cronjob_status_last_successful_time{namespace=\"crowdsec\", cronjob=\"crowdsec-geoip-refresh\"} > 46800\n"
+ },
+ {
+  "name": "CrowdSecLapiDatabaseFilling",
+  "severity": "warning",
+  "expr": "kubelet_volume_stats_used_bytes{namespace=\"crowdsec\", persistentvolumeclaim=\"crowdsec-db-pvc\"}\n  / kubelet_volume_stats_capacity_bytes{namespace=\"crowdsec\", persistentvolumeclaim=\"crowdsec-db-pvc\"} > 0.8\n"
+ },
+ {
+  "name": "CrowdSecLapiDown",
+  "severity": "warning",
+  "expr": "(max(up{namespace=\"crowdsec\", job=\"crowdsec-service\"}) or vector(0)) == 0\n"
+ },
+ {
+  "name": "CrowdSecReceiverDegraded",
+  "severity": "warning",
+  "expr": "kube_deployment_status_replicas_available{namespace=\"crowdsec\", deployment=\"crowdsec-receiver\"} < 2\n"
+ },
+ {
+  "name": "CrowdSecReceiverDown",
+  "severity": "critical",
+  "expr": "(kube_deployment_spec_replicas{namespace=\"crowdsec\", deployment=\"crowdsec-receiver\"} > 0)\n  unless on (namespace, deployment)\n(kube_deployment_status_replicas_available{namespace=\"crowdsec\", deployment=\"crowdsec-receiver\"} >= 1)\n"
+ },
+ {
+  "name": "CrowdSecReceiverNotReceiving",
+  "severity": "warning",
+  "expr": "sum(rate(cs_syslogsource_hits_total{namespace=\"crowdsec\"}[10m]))\n  < 0.8 * sum(rate(nginx_ingress_controller_requests[10m]))\n"
+ },
+ {
+  "name": "CrowdSecReceiverRestarting",
+  "severity": "warning",
+  "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"crowdsec\", container=\"crowdsec-receiver\"}[1h]) > 3\n"
+ },
+ {
+  "name": "CrowdSecSweepJobNeverSucceeded",
+  "severity": "warning",
+  "expr": "absent(kube_cronjob_status_last_successful_time{namespace=\"crowdsec\", cronjob=\"crowdsec-sweep-job\"})\n"
+ },
+ {
+  "name": "CrowdSecSweepJobNotSucceeding",
+  "severity": "warning",
+  "expr": "time() - kube_cronjob_status_last_successful_time{namespace=\"crowdsec\", cronjob=\"crowdsec-sweep-job\"} > 1800\n"
+ },
+ {
+  "name": "EdgeConntrackFilling",
+  "severity": "warning",
+  "expr": "max by (instance) (\n  node_nf_conntrack_entries{instance=~\"node-[123]\"}\n  / node_nf_conntrack_entries_limit{instance=~\"node-[123]\"}\n) > 0.25\n"
+ },
+ {
+  "name": "EdgeDirectHostRequestSurge",
+  "severity": "warning",
+  "expr": "sum by (host) (rate(nginx_ingress_controller_requests{host=~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m])) > 200\nand on (host)\nsum by (host) (rate(nginx_ingress_controller_requests{host=~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m]))\n  > 3 * (\n    max by (host) (\n      sum by (host) (rate(nginx_ingress_controller_requests{host=~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m] offset 1w))\n      or label_replace(sum by (host) (rate(nginx_ingress_controller_requests{host=~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m] offset 2w)), \"week\", \"2\", \"\", \"\")\n    )\n    or 0 * sum by (host) (rate(nginx_ingress_controller_requests{host=~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m]))\n  )\n"
+ },
+ {
+  "name": "EdgeHaproxyBackendDown",
+  "severity": "critical",
+  "expr": "haproxy_backend_active_servers{job=\"haproxy\",instance=\"host-lb\"} == 0\n"
+ },
+ {
+  "name": "EdgeHaproxyHigh5xxRatio",
+  "severity": "warning",
+  "expr": "(\n  sum(rate(haproxy_frontend_http_responses_total{job=\"haproxy\",instance=\"host-lb\",code=\"5xx\"}[5m]))\n  /\n  sum(rate(haproxy_frontend_http_responses_total{job=\"haproxy\",instance=\"host-lb\"}[5m]))\n  > 0.05\n)\nand\nsum(rate(haproxy_frontend_http_responses_total{job=\"haproxy\",instance=\"host-lb\",code=~\"2xx|3xx|4xx|5xx\"}[5m])) > 0.2\n"
+ },
+ {
+  "name": "EdgeHostFloodImpact",
+  "severity": "critical",
+  "expr": "(\n  sum by (host) (rate(nginx_ingress_controller_requests[5m])) > 150\n  and on (host)\n  sum by (host) (rate(nginx_ingress_controller_requests[5m]))\n    > 2 * (\n      max by (host) (\n        sum by (host) (rate(nginx_ingress_controller_requests[5m] offset 1w))\n        or label_replace(sum by (host) (rate(nginx_ingress_controller_requests[5m] offset 2w)), \"week\", \"2\", \"\", \"\")\n      )\n      or 0 * sum by (host) (rate(nginx_ingress_controller_requests[5m]))\n    )\n)\nand on (host)\n(\n  (\n    sum by (host) (rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m])) > 5\n    and on (host)\n    (\n      sum by (host) (rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m]))\n      / sum by (host) (rate(nginx_ingress_controller_requests[5m]))\n    ) > 0.05\n  )\n  or on (host)\n  (\n    1 - sum by (host) (rate(nginx_ingress_controller_request_duration_seconds_bucket{le=\"1\"}[5m]))\n      / sum by (host) (rate(nginx_ingress_controller_request_duration_seconds_count[5m]))\n  ) > 0.05\n)\n"
+ },
+ {
+  "name": "EdgeHostRequestSurge",
+  "severity": "warning",
+  "expr": "sum by (host) (rate(nginx_ingress_controller_requests{host!~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m])) > 150\nand on (host)\nsum by (host) (rate(nginx_ingress_controller_requests{host!~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m]))\n  > 3 * (\n    max by (host) (\n      sum by (host) (rate(nginx_ingress_controller_requests{host!~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m] offset 1w))\n      or label_replace(sum by (host) (rate(nginx_ingress_controller_requests{host!~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m] offset 2w)), \"week\", \"2\", \"\", \"\")\n    )\n    or 0 * sum by (host) (rate(nginx_ingress_controller_requests{host!~\"_|.+\\\\.(k8s|apps\\\\.kubernetes|apps\\\\.k8s|web)\\\\.example.com|(auth-admin|auth-admin-api|clickhouse|elastic|ucs)\\\\.example.com\"}[5m]))\n  )\n"
+ },
+ {
+  "name": "EdgeListenQueueOverflow",
+  "severity": "warning",
+  "expr": "max by (instance) (rate(node_netstat_TcpExt_ListenDrops{instance=~\"node-[123]\"}[5m])) > 2\n"
+ },
+ {
+  "name": "EdgeNewConnectionSurge",
+  "severity": "warning",
+  "expr": "sum by (pod, instance) (rate(nginx_ingress_controller_nginx_process_connections_total{state=\"accepted\"}[5m])) > 50\n"
+ },
+ {
+  "name": "EdgeNicPacketDrops",
+  "severity": "critical",
+  "expr": "(\n  sum by (instance) (rate(node_network_receive_drop_total{instance=~\"node-[123]\", device=\"eth0\"}[5m]))\n  + sum by (instance) (rate(node_softnet_dropped_total{instance=~\"node-[123]\"}[5m]))\n) > 10\n"
+ },
+ {
+  "name": "EdgePacketFlood",
+  "severity": "warning",
+  "expr": "(\n  sum by (instance) (rate(node_network_receive_packets_total{instance=~\"node-[123]\", device=\"eth0\"}[5m]))\n  - sum by (instance) (rate(node_network_receive_packets_total{instance=~\"node-[123]\", device=\"eth0.100\"}[5m]))\n) > 150000\n"
+ },
+ {
+  "name": "EdgeRequestMetricsAbsent",
+  "severity": "warning",
+  "expr": "absent(nginx_ingress_controller_requests) or absent(nginx_ingress_controller_nginx_process_requests_total)\n"
+ },
+ {
+  "name": "EdgeRouterNodeMetricsMissing",
+  "severity": "warning",
+  "expr": "(count(node_netstat_TcpExt_SyncookiesSent{instance=~\"node-[123]\"}) or vector(0)) < 3\nor (count(node_network_receive_packets_total{instance=~\"node-[123]\", device=\"eth0\"}) or vector(0)) < 3\nor (count(node_network_receive_packets_total{instance=~\"node-[123]\", device=\"eth0.100\"}) or vector(0)) < 3\n"
+ },
+ {
+  "name": "EdgeSynFlood",
+  "severity": "warning",
+  "expr": "max by (instance) (rate(node_netstat_TcpExt_SyncookiesSent{instance=~\"node-[123]\"}[5m])) > 10\n"
+ },
+ {
+  "name": "EdgeUnattributedRequestSurge",
+  "severity": "warning",
+  "expr": "(\n  sum by (pod, instance) (rate(nginx_ingress_controller_nginx_process_requests_total[5m]))\n  - sum by (pod, instance) (rate(nginx_ingress_controller_requests[5m]))\n) > 25\n"
+ },
+ {
+  "name": "EdgeUplinkSaturated",
+  "severity": "warning",
+  "expr": "max by (instance) (\n  rate(node_network_receive_bytes_total{instance=~\"node-[123]\", device=\"eth0\"}[5m])\n  / node_network_speed_bytes{instance=~\"node-[123]\", device=\"eth0\"}\n) > 0.85\n"
+ },
+ {
+  "name": "GPUStackInstanceMetricsDown",
+  "severity": "critical",
+  "expr": "(max by (model_id) (up{job=~\"scrapeConfig/gpustack-system/.*-native-metrics\"}) == 0)\n  and on (model_id)\n(max by (model_id) (gpustack:model_instance_status{job=\"gpustack-chart\",state=\"running\"}) > 0)\n"
+ },
+ {
+  "name": "GPUStackMetricsAbsent",
+  "severity": "warning",
+  "expr": "absent(gpustack:worker_status{job=\"gpustack-chart\"})\n  or absent(gpustack:model_desired_instances{job=\"gpustack-chart\"})\n"
+ },
+ {
+  "name": "GPUStackModelUnderReplicated",
+  "severity": "critical",
+  "expr": "max by (cluster_name, model_id, model_name) (gpustack:model_running_instances{job=\"gpustack-chart\"})\n  < max by (cluster_name, model_id, model_name) (gpustack:model_desired_instances{job=\"gpustack-chart\"})\n"
+ },
+ {
+  "name": "GPUStackWorkerNotReady",
+  "severity": "critical",
+  "expr": "max by (cluster_name, worker_id, worker_name) (gpustack:worker_status{job=\"gpustack-chart\",state=~\"not_ready|unreachable\"} == 1)\n  and on (cluster_name, worker_id)\nmax by (cluster_name, worker_id, worker_name) (max_over_time(gpustack:worker_status{job=\"gpustack-chart\",state=\"ready\"}[7d]) == 1)\n"
+ },
+ {
+  "name": "HostDiskSmartFailing",
+  "severity": "critical",
+  "expr": "(\n  (\n    smartctl_device_critical_warning{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} > 0\n    and\n    smartctl_device_critical_warning{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} != 4\n  )\n  * on(instance,device) group_left(serial_number) smartctl_device{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"}\n)\nor\n(\n  smartctl_device_smart_status{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} == 0\n  and on(instance,device) smartctl_device{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\",protocol!=\"NVMe\"}\n)\n"
+ },
+ {
+  "name": "HostFilesystemCriticalFloor",
+  "severity": "critical",
+  "expr": "node_filesystem_avail_bytes{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"}\n  < 0.01 * node_filesystem_size_bytes{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"}\n"
+ },
+ {
+  "name": "HostFilesystemFillingUp",
+  "severity": "warning",
+  "expr": "(\n  predict_linear(max by (instance,device,mountpoint,fstype) (node_filesystem_avail_bytes{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"})[6h:2m], 86400)\n    < 0.05 * max by (instance,device,mountpoint,fstype) (node_filesystem_size_bytes{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"})\n)\nand on(instance,device,mountpoint,fstype) (\n  deriv(max by (instance,device,mountpoint,fstype) (node_filesystem_avail_bytes{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"})[6h:2m]) < 0\n)\n"
+ },
+ {
+  "name": "HostFilesystemReadOnly",
+  "severity": "critical",
+  "expr": "node_filesystem_readonly{job=~\"node-exporter|postal\",fstype=~\"ext3|ext4|xfs\"} == 1\n"
+ },
+ {
+  "name": "HostNvmeHot",
+  "severity": "warning",
+  "expr": "smartctl_device_temperature{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\",temperature_type=\"current\"} > 70\n"
+ },
+ {
+  "name": "HostNvmeMediaErrors",
+  "severity": "critical",
+  "expr": "delta_prometheus(\n  (max by (instance,device) (\n    smartctl_device_media_errors{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"}\n  ))[1h:1m]\n) > 0\n"
+ },
+ {
+  "name": "HostNvmeSpareExhausted",
+  "severity": "critical",
+  "expr": "(\n  smartctl_device_available_spare{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"}\n    <= smartctl_device_available_spare_threshold{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"}\n)\nand on(instance,device) smartctl_device{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\",protocol=\"NVMe\"}\n"
+ },
+ {
+  "name": "HostRaidArrayMissing",
+  "severity": "critical",
+  "expr": "absent(node_md_disks_required{job=\"node-exporter\",instance=\"host-a\",device=\"md127\"})\nor absent(node_md_disks_required{job=\"node-exporter\",instance=\"host-a\",device=\"md1\"})\n"
+ },
+ {
+  "name": "HostRaidDegraded",
+  "severity": "critical",
+  "expr": "node_md_disks_required{job=~\"node-exporter|postal\"}\n  > on(device,instance) node_md_disks{job=~\"node-exporter|postal\",state=\"active\"}\n"
+ },
+ {
+  "name": "HostRaidMemberFailed",
+  "severity": "critical",
+  "expr": "node_md_disks{job=~\"node-exporter|postal\",state=\"failed\"} > 0\n"
+ },
+ {
+  "name": "HostRaidRebuildStalled",
+  "severity": "critical",
+  "expr": "(\n  node_md_state{job=~\"node-exporter|postal\",state=~\"recovering|resync\"} == 1\n)\nunless on(device,instance) (\n  delta(node_md_blocks_synced{job=~\"node-exporter|postal\"}[30m]) > 0\n)\nunless on(instance) (\n  node_md_state{job=~\"node-exporter|postal\",state=\"check\"} == 1\n)\n"
+ },
+ {
+  "name": "HostRaidScrubStalled",
+  "severity": "warning",
+  "expr": "(\n  node_md_state{job=~\"node-exporter|postal\",state=\"check\"} == 1\n)\nunless on(device,instance) (\n  delta(node_md_blocks_synced{job=~\"node-exporter|postal\"}[30m]) > 0\n)\n"
+ },
+ {
+  "name": "HostSmartNoDevices",
+  "severity": "warning",
+  "expr": "(\n  count by (instance,job) (up{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} == 1)\n)\nunless on(instance,job) (\n  count by (instance,job) (smartctl_device_smart_status{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"})\n)\n"
+ },
+ {
+  "name": "HostSmartReadError",
+  "severity": "warning",
+  "expr": "(\n  smartctl_device_smartctl_exit_status{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} != 0\n  and smartctl_device_smart_status{job=~\"smartctl|prometheus-smartctl-prometheus-smartctl-exporter\"} == 1\n)\n"
+ },
+ {
+  "name": "IngressHigh5xxRate",
+  "severity": "warning",
+  "expr": "(\n  sum by (namespace, ingress, service) (rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m]))\n  /\n  sum by (namespace, ingress, service) (rate(nginx_ingress_controller_requests[5m]))\n) > 0.02\nand on (namespace, ingress, service)\nsum by (namespace, ingress, service) (rate(nginx_ingress_controller_requests[5m])) > 1\n"
+ },
+ {
+  "name": "KubeAPIDown",
+  "severity": "critical",
+  "expr": "absent(up{job=\"apiserver\"} == 1)\n"
+ },
+ {
+  "name": "KubeAPIErrorBudgetBurn",
+  "severity": "warning",
+  "expr": "sum(apiserver_request:burnrate3d) > (1.00 * 0.01000)\nand\nsum(apiserver_request:burnrate6h) > (1.00 * 0.01000)\n"
+ },
+ {
+  "name": "KubeAPIErrorBudgetBurn",
+  "severity": "critical",
+  "expr": "sum(apiserver_request:burnrate1h) > (14.40 * 0.01000)\nand\nsum(apiserver_request:burnrate5m) > (14.40 * 0.01000)\n"
+ },
+ {
+  "name": "KubeAPIErrorBudgetBurn",
+  "severity": "critical",
+  "expr": "sum(apiserver_request:burnrate6h) > (6.00 * 0.01000)\nand\nsum(apiserver_request:burnrate30m) > (6.00 * 0.01000)\n"
+ },
+ {
+  "name": "KubeAPIErrorBudgetBurn",
+  "severity": "warning",
+  "expr": "sum(apiserver_request:burnrate1d) > (3.00 * 0.01000)\nand\nsum(apiserver_request:burnrate2h) > (3.00 * 0.01000)\n"
+ },
+ {
+  "name": "KubeAPITerminatedRequests",
+  "severity": "warning",
+  "expr": "sum(rate(apiserver_request_terminations_total{job=\"apiserver\"}[10m]))  / (  sum(rate(apiserver_request_total{job=\"apiserver\"}[10m])) + sum(rate(apiserver_request_terminations_total{job=\"apiserver\"}[10m])) ) > 0.20\n"
+ },
+ {
+  "name": "KubeAggregatedAPIDown",
+  "severity": "warning",
+  "expr": "(1 - max by(name, namespace, cluster)(avg_over_time(aggregator_unavailable_apiservice{job=\"apiserver\"}[10m]))) * 100 < 85\n"
+ },
+ {
+  "name": "KubeAggregatedAPIErrors",
+  "severity": "warning",
+  "expr": "sum by(name, namespace, cluster)(increase(aggregator_unavailable_apiservice_total{job=\"apiserver\"}[10m])) > 4\n"
+ },
+ {
+  "name": "KubeCPUOvercommit",
+  "severity": "warning",
+  "expr": "sum(namespace_cpu:kube_pod_container_resource_requests:sum{job=\"kube-state-metrics\",}) by (cluster) - (sum(kube_node_status_allocatable{job=\"kube-state-metrics\",resource=\"cpu\"}) by (cluster) - max(kube_node_status_allocatable{job=\"kube-state-metrics\",resource=\"cpu\"}) by (cluster)) > 0\nand\n(sum(kube_node_status_allocatable{job=\"kube-state-metrics\",resource=\"cpu\"}) by (cluster) - max(kube_node_status_allocatable{job=\"kube-state-metrics\",resource=\"cpu\"}) by (cluster)) > 0\n"
+ },
+ {
+  "name": "KubeCPUOvercommit",
+  "severity": "warning",
+  "expr": "sum(namespace:kube_pod_container_resource_requests_cpu_cores:sum{})\n  /\nsum(kube_node_status_allocatable_cpu_cores)\n  >\n(count(kube_node_status_allocatable_cpu_cores)-1) / count(kube_node_status_allocatable_cpu_cores)\n"
+ },
+ {
+  "name": "KubeCPUQuotaOvercommit",
+  "severity": "warning",
+  "expr": "sum(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"hard\", resource=\"cpu\"})\n  /\nsum(kube_node_status_allocatable_cpu_cores)\n  > 1.5\n"
+ },
+ {
+  "name": "KubeClientCertificateExpiration",
+  "severity": "warning",
+  "expr": "apiserver_client_certificate_expiration_seconds_count{job=\"apiserver\"} > 0 and on(job) histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job=\"apiserver\"}[5m]))) < 5400\n"
+ },
+ {
+  "name": "KubeClientCertificateExpiration",
+  "severity": "critical",
+  "expr": "apiserver_client_certificate_expiration_seconds_count{job=\"apiserver\"} > 0 and on(job) histogram_quantile(0.01, sum by (job, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job=\"apiserver\"}[5m]))) < 3600\n"
+ },
+ {
+  "name": "KubeClientErrors",
+  "severity": "warning",
+  "expr": "(sum(rate(rest_client_requests_total{job=\"apiserver\",code=~\"5..\"}[5m])) by (cluster, instance, job, namespace)\n  /\nsum(rate(rest_client_requests_total{job=\"apiserver\"}[5m])) by (cluster, instance, job, namespace))\n> 0.01\n"
+ },
+ {
+  "name": "KubeClientErrors",
+  "severity": "warning",
+  "expr": "(sum(rate(rest_client_requests_total{code=~\"5..\"}[5m])) by (instance, job)\n  /\nsum(rate(rest_client_requests_total[5m])) by (instance, job))\n> 0.01\n"
+ },
+ {
+  "name": "KubeContainerWaiting",
+  "severity": "warning",
+  "expr": "sum by (namespace, pod, container, cluster) (kube_pod_container_status_waiting_reason{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}) > 0\n"
+ },
+ {
+  "name": "KubeContainerWaiting",
+  "severity": "warning",
+  "expr": "sum by (namespace, pod, container) (kube_pod_container_status_waiting_reason{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}) > 0\n"
+ },
+ {
+  "name": "KubeControllerManagerDown",
+  "severity": "critical",
+  "expr": "absent(up{job=\"kube-controller-manager\"} == 1)\n"
+ },
+ {
+  "name": "KubeDaemonSetMisScheduled",
+  "severity": "warning",
+  "expr": "kube_daemonset_status_number_misscheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"} > 0\n"
+ },
+ {
+  "name": "KubeDaemonSetMisScheduled",
+  "severity": "warning",
+  "expr": "kube_daemonset_status_number_misscheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"} > 0\n"
+ },
+ {
+  "name": "KubeDaemonSetNotScheduled",
+  "severity": "warning",
+  "expr": "kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  -\nkube_daemonset_status_current_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"} > 0\n"
+ },
+ {
+  "name": "KubeDaemonSetNotScheduled",
+  "severity": "warning",
+  "expr": "kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  -\nkube_daemonset_status_current_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"} > 0\n"
+ },
+ {
+  "name": "KubeDaemonSetRolloutStuck",
+  "severity": "warning",
+  "expr": "(\n  (\n    kube_daemonset_status_current_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  ) or (\n    kube_daemonset_status_number_misscheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n     !=\n    0\n  ) or (\n    kube_daemonset_status_updated_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  ) or (\n    kube_daemonset_status_number_available{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  )\n) and (\n  changes(kube_daemonset_status_updated_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeDaemonSetRolloutStuck",
+  "severity": "warning",
+  "expr": "(\n  (\n    kube_daemonset_status_current_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  ) or (\n    kube_daemonset_status_number_misscheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n     !=\n    0\n  ) or (\n    kube_daemonset_updated_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  ) or (\n    kube_daemonset_status_number_available{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n     !=\n    kube_daemonset_status_desired_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  )\n) and (\n  changes(kube_daemonset_updated_number_scheduled{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeDeploymentGenerationMismatch",
+  "severity": "warning",
+  "expr": "kube_deployment_status_observed_generation{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  !=\nkube_deployment_metadata_generation{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeDeploymentGenerationMismatch",
+  "severity": "warning",
+  "expr": "kube_deployment_status_observed_generation{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  !=\nkube_deployment_metadata_generation{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeDeploymentReplicasMismatch",
+  "severity": "warning",
+  "expr": "(\n  kube_deployment_spec_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n    !=\n  kube_deployment_status_replicas_available{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n) and (\n  changes(kube_deployment_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeDeploymentRolloutStuck",
+  "severity": "warning",
+  "expr": "kube_deployment_status_condition{condition=\"Progressing\", status=\"false\",namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n!= 0\n"
+ },
+ {
+  "name": "KubeHpaMaxedOut",
+  "severity": "warning",
+  "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  ==\nkube_horizontalpodautoscaler_spec_max_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeHpaMaxedOut",
+  "severity": "warning",
+  "expr": "kube_hpa_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  ==\nkube_hpa_spec_max_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeHpaReplicasMismatch",
+  "severity": "warning",
+  "expr": "(kube_horizontalpodautoscaler_status_desired_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  !=\nkube_horizontalpodautoscaler_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"})\n  and\n(kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  >\nkube_horizontalpodautoscaler_spec_min_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"})\n  and\n(kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  <\nkube_horizontalpodautoscaler_spec_max_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"})\n  and\nchanges(kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}[15m]) == 0\n"
+ },
+ {
+  "name": "KubeHpaReplicasMismatch",
+  "severity": "warning",
+  "expr": "(kube_hpa_status_desired_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  !=\nkube_hpa_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"})\n  and\n(kube_hpa_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  >\nkube_hpa_spec_min_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"})\n  and\n(kube_hpa_status_current_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  <\nkube_hpa_spec_max_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"})\n  and\nchanges(kube_hpa_status_current_replicas[15m]) == 0\n"
+ },
+ {
+  "name": "KubeJobCompletion",
+  "severity": "warning",
+  "expr": "kube_job_spec_completions{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"} - kube_job_status_succeeded{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}  > 0\n"
+ },
+ {
+  "name": "KubeJobFailed",
+  "severity": "warning",
+  "expr": "kube_job_failed{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}  > 0\n"
+ },
+ {
+  "name": "KubeJobFailed",
+  "severity": "warning",
+  "expr": "kube_job_failed{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}  > 0\n"
+ },
+ {
+  "name": "KubeJobNotCompleted",
+  "severity": "warning",
+  "expr": "time() - max by(namespace, job_name, cluster) (kube_job_status_start_time{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  and\nkube_job_status_active{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"} > 0) > 43200\n"
+ },
+ {
+  "name": "KubeMemoryOvercommit",
+  "severity": "warning",
+  "expr": "sum(namespace_memory:kube_pod_container_resource_requests:sum{}) by (cluster) - (sum(kube_node_status_allocatable{resource=\"memory\", job=\"kube-state-metrics\"}) by (cluster) - max(kube_node_status_allocatable{resource=\"memory\", job=\"kube-state-metrics\"}) by (cluster)) > 0\nand\n(sum(kube_node_status_allocatable{resource=\"memory\", job=\"kube-state-metrics\"}) by (cluster) - max(kube_node_status_allocatable{resource=\"memory\", job=\"kube-state-metrics\"}) by (cluster)) > 0\n"
+ },
+ {
+  "name": "KubeMemoryOvercommit",
+  "severity": "warning",
+  "expr": "sum(namespace:kube_pod_container_resource_requests_memory_bytes:sum{})\n  /\nsum(kube_node_status_allocatable_memory_bytes)\n  >\n(count(kube_node_status_allocatable_memory_bytes)-1)\n  /\ncount(kube_node_status_allocatable_memory_bytes)\n"
+ },
+ {
+  "name": "KubeMemoryQuotaOvercommit",
+  "severity": "warning",
+  "expr": "sum(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"hard\", resource=\"memory\"})\n  /\nsum(kube_node_status_allocatable_memory_bytes{job=\"kube-state-metrics\"})\n  > 1.5\n"
+ },
+ {
+  "name": "KubeNodeNotReady",
+  "severity": "warning",
+  "expr": "kube_node_status_condition{job=\"kube-state-metrics\",condition=\"Ready\",status=\"true\"} == 0\n"
+ },
+ {
+  "name": "KubeNodeReadinessFlapping",
+  "severity": "warning",
+  "expr": "sum(changes(kube_node_status_condition{job=\"kube-state-metrics\",status=\"true\",condition=\"Ready\"}[15m])) by (cluster, node) > 2\n"
+ },
+ {
+  "name": "KubeNodeReadinessFlapping",
+  "severity": "warning",
+  "expr": "sum(changes(kube_node_status_condition{status=\"true\",condition=\"Ready\"}[15m])) by (node) > 2\n"
+ },
+ {
+  "name": "KubeNodeUnreachable",
+  "severity": "warning",
+  "expr": "(kube_node_spec_taint{job=\"kube-state-metrics\",key=\"node.kubernetes.io/unreachable\",effect=\"NoSchedule\"} unless ignoring(key,value) kube_node_spec_taint{job=\"kube-state-metrics\",key=~\"ToBeDeletedByClusterAutoscaler|cloud.google.com/impending-node-termination|aws-node-termination-handler/spot-itn\"}) == 1\n"
+ },
+ {
+  "name": "KubePersistentVolumeErrors",
+  "severity": "critical",
+  "expr": "kube_persistentvolume_status_phase{phase=~\"Failed|Pending\",namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"} > 0\n"
+ },
+ {
+  "name": "KubePersistentVolumeFillingUp",
+  "severity": "critical",
+  "expr": "kubelet_volume_stats_available_bytes{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kubelet\", metrics_path=\"/metrics\"}\n  /\nkubelet_volume_stats_capacity_bytes{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kubelet\", metrics_path=\"/metrics\"}\n  < 0.03\n"
+ },
+ {
+  "name": "KubePersistentVolumeFillingUp",
+  "severity": "warning",
+  "expr": "(\n  kubelet_volume_stats_available_bytes{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kubelet\", metrics_path=\"/metrics\"}\n    /\n  kubelet_volume_stats_capacity_bytes{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kubelet\", metrics_path=\"/metrics\"}\n) < 0.15\nand\npredict_linear(kubelet_volume_stats_available_bytes{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kubelet\", metrics_path=\"/metrics\"}[6h], 4 * 24 * 3600) < 0\n"
+ },
+ {
+  "name": "KubePodCrashLooping",
+  "severity": "warning",
+  "expr": "max_over_time(kube_pod_container_status_waiting_reason{reason=\"CrashLoopBackOff\", namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}[5m]) >= 1\n"
+ },
+ {
+  "name": "KubePodCrashLooping",
+  "severity": "warning",
+  "expr": "rate(kube_pod_container_status_restarts_total{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}[5m]) * 60 * 5 > 0\n"
+ },
+ {
+  "name": "KubePodNotReady",
+  "severity": "warning",
+  "expr": "sum by (namespace, pod, cluster) (\n  max by(namespace, pod, cluster) (\n    kube_pod_status_phase{namespace=~\"(openshift-.*|kube-.*|default)\", job=\"kube-state-metrics\", phase=~\"Pending|Unknown\"}\n    unless ignoring(phase) (kube_pod_status_unschedulable{job=\"kube-state-metrics\"} == 1)\n  ) * on(namespace, pod, cluster) group_left(owner_kind) topk by(namespace, pod, cluster) (\n    1, max by(namespace, pod, owner_kind, cluster) (kube_pod_owner{owner_kind!=\"Job\"})\n  )\n) > 0\n"
+ },
+ {
+  "name": "KubePodNotReady",
+  "severity": "warning",
+  "expr": "sum by (namespace, pod) (\n  max by(namespace, pod) (\n    kube_pod_status_phase{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", phase=~\"Pending|Unknown\"}\n  ) * on(namespace, pod) group_left(owner_kind) topk by(namespace, pod) (\n    1, max by(namespace, pod, owner_kind) (kube_pod_owner{owner_kind!=\"Job\"})\n  )\n) > 0\n"
+ },
+ {
+  "name": "KubeQuotaAlmostFull",
+  "severity": "info",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  > 0.9 < 1\n"
+ },
+ {
+  "name": "KubeQuotaAlmostFull",
+  "severity": "info",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  > 0.9 < 1\n"
+ },
+ {
+  "name": "KubeQuotaExceeded",
+  "severity": "warning",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  > 1\n"
+ },
+ {
+  "name": "KubeQuotaExceeded",
+  "severity": "warning",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  > 1\n"
+ },
+ {
+  "name": "KubeQuotaFullyUsed",
+  "severity": "info",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  == 1\n"
+ },
+ {
+  "name": "KubeQuotaFullyUsed",
+  "severity": "info",
+  "expr": "kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"used\"}\n  / ignoring(instance, job, type)\n(kube_resourcequota{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\", type=\"hard\"} > 0)\n  == 1\n"
+ },
+ {
+  "name": "KubeSchedulerDown",
+  "severity": "critical",
+  "expr": "absent(up{job=\"scheduler\"} == 1)\n"
+ },
+ {
+  "name": "KubeStateMetricsListErrors",
+  "severity": "warning",
+  "expr": "(sum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\",result=\"error\"}[5m])) by (cluster)\n  /\nsum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\"}[5m])) by (cluster))\n> 0.01\n"
+ },
+ {
+  "name": "KubeStateMetricsListErrors",
+  "severity": "critical",
+  "expr": "(sum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\",result=\"error\"}[5m]))\n  /\nsum(rate(kube_state_metrics_list_total{job=\"kube-state-metrics\"}[5m])))\n> 0.01\n"
+ },
+ {
+  "name": "KubeStateMetricsWatchErrors",
+  "severity": "warning",
+  "expr": "(sum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\",result=\"error\"}[5m])) by (cluster)\n  /\nsum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\"}[5m])) by (cluster))\n> 0.01\n"
+ },
+ {
+  "name": "KubeStateMetricsWatchErrors",
+  "severity": "critical",
+  "expr": "(sum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\",result=\"error\"}[5m]))\n  /\nsum(rate(kube_state_metrics_watch_total{job=\"kube-state-metrics\"}[5m])))\n> 0.01\n"
+ },
+ {
+  "name": "KubeStatefulSetGenerationMismatch",
+  "severity": "warning",
+  "expr": "kube_statefulset_status_observed_generation{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  !=\nkube_statefulset_metadata_generation{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeStatefulSetGenerationMismatch",
+  "severity": "warning",
+  "expr": "kube_statefulset_status_observed_generation{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  !=\nkube_statefulset_metadata_generation{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n"
+ },
+ {
+  "name": "KubeStatefulSetReplicasMismatch",
+  "severity": "warning",
+  "expr": "(\n  kube_statefulset_status_replicas_ready{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n    !=\n  kube_statefulset_status_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n) and (\n  changes(kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}[10m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeStatefulSetReplicasMismatch",
+  "severity": "warning",
+  "expr": "(\n  kube_statefulset_status_replicas_ready{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n    !=\n  kube_statefulset_status_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n) and (\n  changes(kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeStatefulSetUpdateNotRolledOut",
+  "severity": "warning",
+  "expr": "(\n  max without (revision) (\n    kube_statefulset_status_current_revision{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n      unless\n    kube_statefulset_status_update_revision{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  )\n    *\n  (\n    kube_statefulset_replicas{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n      !=\n    kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}\n  )\n)  and (\n  changes(kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeStatefulSetUpdateNotRolledOut",
+  "severity": "warning",
+  "expr": "(\n  max without (revision) (\n    kube_statefulset_status_current_revision{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n      unless\n    kube_statefulset_status_update_revision{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  )\n    *\n  (\n    kube_statefulset_replicas{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n      !=\n    kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}\n  )\n)  and (\n  changes(kube_statefulset_status_replicas_updated{namespace=~\"(openshift-.*|kube-.*|default|logging)\",job=\"kube-state-metrics\"}[5m])\n    ==\n  0\n)\n"
+ },
+ {
+  "name": "KubeletClientCertificateRenewalErrors",
+  "severity": "warning",
+  "expr": "increase(kubelet_certificate_manager_client_expiration_renew_errors[5m]) > 0\n"
+ },
+ {
+  "name": "KubeletDown",
+  "severity": "critical",
+  "expr": "absent(up{job=\"kubelet\", metrics_path=\"/metrics\"} == 1)\n"
+ },
+ {
+  "name": "KubeletPlegDurationHigh",
+  "severity": "warning",
+  "expr": "node_quantile:kubelet_pleg_relist_duration_seconds:histogram_quantile{quantile=\"0.99\"} >= 10\n"
+ },
+ {
+  "name": "KubeletPodStartUpLatencyHigh",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, sum(rate(kubelet_pod_worker_duration_seconds_bucket{job=\"kubelet\", metrics_path=\"/metrics\"}[5m])) by (cluster, instance, le)) * on(cluster, instance) group_left(node) kubelet_node_name{job=\"kubelet\", metrics_path=\"/metrics\"} > 60\n"
+ },
+ {
+  "name": "KubeletPodStartUpLatencyHigh",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, sum(rate(kubelet_pod_worker_duration_seconds_bucket{job=\"kubelet\", metrics_path=\"/metrics\"}[5m])) by (instance, le)) * on(instance) group_left(node) kubelet_node_name{job=\"kubelet\", metrics_path=\"/metrics\"} > 60\n"
+ },
+ {
+  "name": "KubeletServerCertificateRenewalErrors",
+  "severity": "warning",
+  "expr": "increase(kubelet_server_expiration_renew_errors[5m]) > 0\n"
+ },
+ {
+  "name": "KubeletTooManyPods",
+  "severity": "info",
+  "expr": "count by(cluster, node) (\n  (kube_pod_status_phase{job=\"kube-state-metrics\",phase=\"Running\"} == 1) * on(instance,pod,namespace,cluster) group_left(node) topk by(instance,pod,namespace,cluster) (1, kube_pod_info{job=\"kube-state-metrics\"})\n)\n/\nmax by(cluster, node) (\n  kube_node_status_capacity{job=\"kube-state-metrics\",resource=\"pods\"} != 1\n) > 0.95\n"
+ },
+ {
+  "name": "KubeletTooManyPods",
+  "severity": "warning",
+  "expr": "count by(node) (\n  (kube_pod_status_phase{job=\"kube-state-metrics\",phase=\"Running\"} == 1) * on(instance,pod,namespace,cluster) group_left(node) topk by(instance,pod,namespace,cluster) (1, kube_pod_info{job=\"kube-state-metrics\"})\n)\n/\nmax by(node) (\n  kube_node_status_capacity_pods{job=\"kube-state-metrics\"} != 1\n) > 0.95\n"
+ },
+ {
+  "name": "LokiCanaryLatency",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, sum(rate(loki_canary_response_latency_seconds_bucket[5m])) by (le, namespace, job)) > 5\n"
+ },
+ {
+  "name": "LokiRequestErrors",
+  "severity": "critical",
+  "expr": "100 * sum(rate(loki_request_duration_seconds_count{status_code=~\"5..\"}[2m])) by (namespace, job, route)\n  /\nsum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)\n  > 10\n"
+ },
+ {
+  "name": "LokiRequestLatency",
+  "severity": "critical",
+  "expr": "namespace_job_route:loki_request_duration_seconds:99quantile{route!~\"(?i).*tail.*\"} > 1\n"
+ },
+ {
+  "name": "LokiRequestPanics",
+  "severity": "critical",
+  "expr": "sum(increase(loki_panic_total[10m])) by (namespace, job) > 0\n"
+ },
+ {
+  "name": "LokiTooManyCompactorsRunning",
+  "severity": "warning",
+  "expr": "sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1\n"
+ },
+ {
+  "name": "ModerationDiscordForwarderDown",
+  "severity": "warning",
+  "expr": "kube_deployment_status_replicas_available{namespace=\"abuse-detection\", deployment=\"moderation-discord\"} < 1\n"
+ },
+ {
+  "name": "MultipleContainersOOMKilled",
+  "severity": "info",
+  "expr": "sum(max by(namespace, container, pod) (increase(kube_pod_container_status_restarts_total[12m])) and max by(namespace, container, pod) (kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\"}) == 1) > 5"
+ },
+ {
+  "name": "NodeBondingDegraded",
+  "severity": "warning",
+  "expr": "(node_bonding_slaves - node_bonding_active) != 0\n"
+ },
+ {
+  "name": "NodeClockNotSynchronising",
+  "severity": "critical",
+  "expr": "(\nmin_over_time(node_timex_sync_status{job=\"node-exporter\"}[5m]) == 0\nand\nnode_timex_maxerror_seconds{job=\"node-exporter\"} >= 16\n) and on() absent(up{job=\"ptp-monitor-service\"})"
+ },
+ {
+  "name": "NodeClockNotSynchronising",
+  "severity": "warning",
+  "expr": "min_over_time(node_timex_sync_status[5m]) == 0\nand\nnode_timex_maxerror_seconds >= 16\n"
+ },
+ {
+  "name": "NodeClockSkewDetected",
+  "severity": "warning",
+  "expr": "(\n(\n  node_timex_offset_seconds{job=\"node-exporter\"} > 0.05\nand\n  deriv(node_timex_offset_seconds{job=\"node-exporter\"}[5m]) >= 0\n)\nor\n(\n  node_timex_offset_seconds{job=\"node-exporter\"} < -0.05\nand\n  deriv(node_timex_offset_seconds{job=\"node-exporter\"}[5m]) <= 0\n)\n) and on() absent(up{job=\"ptp-monitor-service\"})"
+ },
+ {
+  "name": "NodeClockSkewDetected",
+  "severity": "warning",
+  "expr": "(\n  node_timex_offset_seconds > 0.05\nand\n  deriv(node_timex_offset_seconds[5m]) >= 0\n)\nor\n(\n  node_timex_offset_seconds < -0.05\nand\n  deriv(node_timex_offset_seconds[5m]) <= 0\n)\n"
+ },
+ {
+  "name": "NodeFileDescriptorLimit",
+  "severity": "warning",
+  "expr": "(\n  node_filefd_allocated{job=\"node-exporter\"} * 100 / node_filefd_maximum{job=\"node-exporter\"} > 70\n)\n"
+ },
+ {
+  "name": "NodeFileDescriptorLimit",
+  "severity": "critical",
+  "expr": "(\n  node_filefd_allocated{job=\"node-exporter\"} * 100 / node_filefd_maximum{job=\"node-exporter\"} > 90\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfFiles",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 3\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfFiles",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 5\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfFiles",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\"} * 100 < 5\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfFiles",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\"} * 100 < 3\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfSpace",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_size_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 3\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfSpace",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_size_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 5\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfSpace",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} / node_filesystem_size_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} * 100 < 5\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemAlmostOutOfSpace",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} / node_filesystem_size_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} * 100 < 3\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemFilesFillingUp",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\",device!=\"shm\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 20\nand\n  predict_linear(node_filesystem_files_free{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"}[6h], 4*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemFilesFillingUp",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_files{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 40\nand\n  predict_linear(node_filesystem_files_free{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"}[6h], 24*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemFilesFillingUp",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\"} * 100 < 40\nand\n  predict_linear(node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"}[6h], 24*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemFilesFillingUp",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_files{job=\"node-exporter\",fstype!=\"\"} * 100 < 20\nand\n  predict_linear(node_filesystem_files_free{job=\"node-exporter\",fstype!=\"\"}[6h], 4*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemSpaceFillingUp",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_size_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 10\nand\n  predict_linear(node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"}[6h], 4*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemSpaceFillingUp",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} / node_filesystem_size_bytes{job=\"node-exporter\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} * 100 < 15\nand\n  predict_linear(node_filesystem_avail_bytes{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"}[6h], 24*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",device!=\"shm\",fstype!=\"\",mountpoint!~\"/var/lib/ibmc-s3fs.*\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemSpaceFillingUp",
+  "severity": "warning",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_size_bytes{job=\"node-exporter\",fstype!=\"\"} * 100 < 40\nand\n  predict_linear(node_filesystem_avail_bytes{job=\"node-exporter\",fstype!=\"\"}[24h], 24*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeFilesystemSpaceFillingUp",
+  "severity": "critical",
+  "expr": "(\n  node_filesystem_avail_bytes{job=\"node-exporter\",fstype!=\"\"} / node_filesystem_size_bytes{job=\"node-exporter\",fstype!=\"\"} * 100 < 15\nand\n  predict_linear(node_filesystem_avail_bytes{job=\"node-exporter\",fstype!=\"\"}[24h], 4*60*60) < 0\nand\n  node_filesystem_readonly{job=\"node-exporter\",fstype!=\"\"} == 0\n)\n"
+ },
+ {
+  "name": "NodeHighNumberConntrackEntriesUsed",
+  "severity": "warning",
+  "expr": "(node_nf_conntrack_entries{job=\"node-exporter\"} / node_nf_conntrack_entries_limit) > 0.75\n"
+ },
+ {
+  "name": "NodeHighNumberConntrackEntriesUsed",
+  "severity": "warning",
+  "expr": "(node_nf_conntrack_entries / node_nf_conntrack_entries_limit) > 0.75\n"
+ },
+ {
+  "name": "NodeLocalDNSDown",
+  "severity": "critical",
+  "expr": "absent(up{k8s_app=\"node-local-dns\"} == 1)\n"
+ },
+ {
+  "name": "NodeLocalDNSErrorsHigh",
+  "severity": "critical",
+  "expr": "sum(rate(coredns_dns_response_rcode_count_total{k8s_app=\"node-local-dns\",rcode=\"SERVFAIL\"}[5m]))\n  /\nsum(rate(coredns_dns_response_rcode_count_total{k8s_app=\"node-local-dns\"}[5m])) > 0.03\n"
+ },
+ {
+  "name": "NodeLocalDNSErrorsHigh",
+  "severity": "warning",
+  "expr": "sum(rate(coredns_dns_response_rcode_count_total{k8s_app=\"node-local-dns\",rcode=\"SERVFAIL\"}[5m]))\n  /\nsum(rate(coredns_dns_response_rcode_count_total{k8s_app=\"node-local-dns\"}[5m])) > 0.01\n"
+ },
+ {
+  "name": "NodeLocalDNSForwardErrorsHigh",
+  "severity": "critical",
+  "expr": "sum(rate(coredns_forward_response_rcode_count_total{k8s_app=\"node-local-dns\",rcode=\"SERVFAIL\"}[5m]))\n  /\nsum(rate(coredns_forward_response_rcode_count_total{k8s_app=\"node-local-dns\"}[5m])) > 0.03\n"
+ },
+ {
+  "name": "NodeLocalDNSForwardLatencyHigh",
+  "severity": "critical",
+  "expr": "histogram_quantile(0.99, sum(rate(coredns_forward_request_duration_seconds_bucket{k8s_app=\"node-local-dns\"}[5m])) without(instance, pod)) > 4\n"
+ },
+ {
+  "name": "NodeLocalDNSLatencyHigh",
+  "severity": "critical",
+  "expr": "histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket{k8s_app=\"node-local-dns\"}[5m])) without(instance, pod)) > 4\n"
+ },
+ {
+  "name": "NodeLocalDNSMetricsDown",
+  "severity": "critical",
+  "expr": "absent(up{name=\"node-local-dns-metrics\"} == 1)\n"
+ },
+ {
+  "name": "NodeLocalDNSSetupErrorsHigh",
+  "severity": "critical",
+  "expr": "rate(coredns_nodecache_setup_errors{name=\"node-local-dns-metrics\"}[5m]) > 0\n"
+ },
+ {
+  "name": "NodeMemoryMajorPagesFaults",
+  "severity": "warning",
+  "expr": "rate(node_vmstat_pgmajfault{job=\"node-exporter\"}[5m]) > 500\n"
+ },
+ {
+  "name": "NodeNetworkInterfaceFlapping",
+  "severity": "warning",
+  "expr": "changes(node_network_up{job=\"node-exporter\",device!~\"veth.+\"}[2m]) > 2\n"
+ },
+ {
+  "name": "NodeNetworkReceiveErrs",
+  "severity": "warning",
+  "expr": "rate(node_network_receive_errs_total{job=\"node-exporter\"}[2m]) / rate(node_network_receive_packets_total{job=\"node-exporter\"}[2m]) > 0.01\n"
+ },
+ {
+  "name": "NodeNetworkReceiveErrs",
+  "severity": "warning",
+  "expr": "rate(node_network_receive_errs_total[2m]) / rate(node_network_receive_packets_total[2m]) > 0.01\n"
+ },
+ {
+  "name": "NodeNetworkTransmitErrs",
+  "severity": "warning",
+  "expr": "rate(node_network_transmit_errs_total{job=\"node-exporter\"}[2m]) / rate(node_network_transmit_packets_total{job=\"node-exporter\"}[2m]) > 0.01\n"
+ },
+ {
+  "name": "NodeNetworkTransmitErrs",
+  "severity": "warning",
+  "expr": "rate(node_network_transmit_errs_total[2m]) / rate(node_network_transmit_packets_total[2m]) > 0.01\n"
+ },
+ {
+  "name": "NodeRAIDDegraded",
+  "severity": "critical",
+  "expr": "node_md_disks_required{job=\"node-exporter\",device=~\"mmcblk.p.+|nvme.+|sd.+|vd.+|xvd.+|dm-.+|dasd.+\"} - ignoring (state) (node_md_disks{state=\"active\",job=\"node-exporter\",device=~\"mmcblk.p.+|nvme.+|sd.+|vd.+|xvd.+|dm-.+|dasd.+\"}) > 0\n"
+ },
+ {
+  "name": "NodeRAIDDegraded",
+  "severity": "critical",
+  "expr": "node_md_disks_required - ignoring (state) (node_md_disks{state=\"active\"}) > 0\n"
+ },
+ {
+  "name": "NodeRAIDDiskFailure",
+  "severity": "warning",
+  "expr": "node_md_disks{state=\"failed\",job=\"node-exporter\",device=~\"mmcblk.p.+|nvme.+|sd.+|vd.+|xvd.+|dm-.+|dasd.+\"} > 0\n"
+ },
+ {
+  "name": "NodeRAIDDiskFailure",
+  "severity": "warning",
+  "expr": "node_md_disks{state=\"fail\"} > 0\n"
+ },
+ {
+  "name": "NodeSystemSaturation",
+  "severity": "warning",
+  "expr": "node_load1{job=\"node-exporter\"}\n/ count without (cpu, mode) (node_cpu_seconds_total{job=\"node-exporter\", mode=\"idle\"}) > 2\n"
+ },
+ {
+  "name": "NodeSystemdServiceFailed",
+  "severity": "warning",
+  "expr": "node_systemd_unit_state{job=\"node-exporter\", state=\"failed\"} == 1\n"
+ },
+ {
+  "name": "NodeTextFileCollectorScrapeError",
+  "severity": "warning",
+  "expr": "node_textfile_scrape_error{job=\"node-exporter\"} == 1\n"
+ },
+ {
+  "name": "PersistentVolumeUsageCritical",
+  "severity": "critical",
+  "expr": "((kubelet_volume_stats_used_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"})) / (kubelet_volume_stats_capacity_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"}))) > 0.95"
+ },
+ {
+  "name": "PersistentVolumeUsageNearFull",
+  "severity": "warning",
+  "expr": "(((kubelet_volume_stats_used_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"})) / (kubelet_volume_stats_capacity_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"}))) > 0.90) or ((((kubelet_volume_stats_used_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"})) / (kubelet_volume_stats_capacity_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"}))) > 0.75) and ((kubelet_volume_stats_capacity_bytes * on (namespace,persistentvolumeclaim) group_left(storageclass, provisioner) (kube_persistentvolumeclaim_info * on (storageclass) group_left(provisioner) kube_storageclass_info {provisioner=~\"(.*rbd.csi.ceph.com)|(.*cephfs.csi.ceph.com)\"})) < 34359738368))"
+ },
+ {
+  "name": "PrometheusBadConfig",
+  "severity": "critical",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\nmax_over_time(prometheus_config_last_reload_successful{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) == 0\n"
+ },
+ {
+  "name": "PrometheusDuplicateTimestamps",
+  "severity": "warning",
+  "expr": "rate(prometheus_target_scrapes_sample_duplicate_timestamp_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusErrorSendingAlertsToAnyAlertmanager",
+  "severity": "critical",
+  "expr": "min without (alertmanager) (\n  rate(prometheus_notifications_errors_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n/\n  rate(prometheus_notifications_sent_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n)\n* 100\n> 3\n"
+ },
+ {
+  "name": "PrometheusErrorSendingAlertsToSomeAlertmanagers",
+  "severity": "warning",
+  "expr": "(\n  rate(prometheus_notifications_errors_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n/\n  rate(prometheus_notifications_sent_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n)\n* 100\n> 1\n"
+ },
+ {
+  "name": "PrometheusMissingRuleEvaluations",
+  "severity": "warning",
+  "expr": "increase(prometheus_rule_group_iterations_missed_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusNotConnectedToAlertmanagers",
+  "severity": "warning",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\nmax_over_time(prometheus_notifications_alertmanagers_discovered{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) < 1\n"
+ },
+ {
+  "name": "PrometheusNotIngestingSamples",
+  "severity": "warning",
+  "expr": "(\n  rate(prometheus_tsdb_head_samples_appended_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) <= 0\nand\n  (\n    sum without(scrape_job) (prometheus_target_metadata_cache_entries{job=~\"prometheus-k8s|prometheus-user-workload\"}) > 0\n  or\n    sum without(rule_group) (prometheus_rule_group_rules{job=~\"prometheus-k8s|prometheus-user-workload\"}) > 0\n  )\n)\n"
+ },
+ {
+  "name": "PrometheusNotificationQueueRunningFull",
+  "severity": "warning",
+  "expr": "# Without min_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\n(\n  predict_linear(prometheus_notifications_queue_length{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m], 60 * 30)\n>\n  min_over_time(prometheus_notifications_queue_capacity{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n)\n"
+ },
+ {
+  "name": "PrometheusOperatorListErrors",
+  "severity": "warning",
+  "expr": "(sum by (controller,namespace) (rate(prometheus_operator_list_operations_failed_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[10m])) / sum by (controller,namespace) (rate(prometheus_operator_list_operations_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[10m]))) > 0.4\n"
+ },
+ {
+  "name": "PrometheusOperatorNodeLookupErrors",
+  "severity": "warning",
+  "expr": "rate(prometheus_operator_node_address_lookup_errors_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]) > 0.1\n"
+ },
+ {
+  "name": "PrometheusOperatorNotReady",
+  "severity": "warning",
+  "expr": "min by(namespace, controller) (max_over_time(prometheus_operator_ready{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]) == 0)\n"
+ },
+ {
+  "name": "PrometheusOperatorReconcileErrors",
+  "severity": "warning",
+  "expr": "(sum by (controller,namespace) (rate(prometheus_operator_reconcile_errors_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]))) / (sum by (controller,namespace) (rate(prometheus_operator_reconcile_operations_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]))) > 0.1\n"
+ },
+ {
+  "name": "PrometheusOperatorRejectedResources",
+  "severity": "warning",
+  "expr": "min_over_time(prometheus_operator_managed_resources{state=\"rejected\",job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusOperatorSyncFailed",
+  "severity": "warning",
+  "expr": "min_over_time(prometheus_operator_syncs{status=\"failed\",job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusOperatorWatchErrors",
+  "severity": "warning",
+  "expr": "(sum by (controller,namespace) (rate(prometheus_operator_watch_operations_failed_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[10m])) / sum by (controller,namespace) (rate(prometheus_operator_watch_operations_total{job=\"prometheus-operator\",namespace=\"openshift-monitoring\"}[10m]))) > 0.4\n"
+ },
+ {
+  "name": "PrometheusOutOfOrderTimestamps",
+  "severity": "warning",
+  "expr": "rate(prometheus_target_scrapes_sample_out_of_order_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusRemoteStorageFailures",
+  "severity": "critical",
+  "expr": "(\n  rate(prometheus_remote_storage_failed_samples_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n/\n  (\n    rate(prometheus_remote_storage_failed_samples_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n  +\n    rate(prometheus_remote_storage_succeeded_samples_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n  )\n)\n* 100\n> 1\n"
+ },
+ {
+  "name": "PrometheusRemoteWriteBehind",
+  "severity": "critical",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\n(\n  max_over_time(prometheus_remote_storage_highest_timestamp_in_seconds{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n- ignoring(remote_name, url) group_right\n  max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n)\n> 120\n"
+ },
+ {
+  "name": "PrometheusRemoteWriteDesiredShards",
+  "severity": "warning",
+  "expr": "# Without max_over_time, failed scrapes could create false negatives, see\n# https://example.com/doc for details.\n(\n  max_over_time(prometheus_remote_storage_shards_desired{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n>\n  max_over_time(prometheus_remote_storage_shards_max{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m])\n)\n"
+ },
+ {
+  "name": "PrometheusRuleFailures",
+  "severity": "critical",
+  "expr": "increase(prometheus_rule_evaluation_failures_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) > 0\n"
+ },
+ {
+  "name": "PrometheusTSDBCompactionsFailing",
+  "severity": "warning",
+  "expr": "increase(prometheus_tsdb_compactions_failed_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[3h]) > 0\n"
+ },
+ {
+  "name": "PrometheusTSDBReloadsFailing",
+  "severity": "warning",
+  "expr": "increase(prometheus_tsdb_reloads_failures_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[3h]) > 0\n"
+ },
+ {
+  "name": "PrometheusTargetLimitHit",
+  "severity": "warning",
+  "expr": "increase(prometheus_target_scrape_pool_exceeded_target_limit_total{job=~\"prometheus-k8s|prometheus-user-workload\"}[5m]) > 0\n"
+ },
+ {
+  "name": "RoyalRoadCommentFlood",
+  "severity": "warning",
+  "expr": "sum(increase(http_server_request_duration_seconds_count{deployment_environment=\"Production\", http_request_method=\"POST\", http_route=~\"Fiction/Chapter/[{]cid[}]|Fiction/[{]fid:long[}]/[{]fslug[}]/Chapter/[{]cid:long[}]/[{]slug[}]|v1/Comment/chapter/[{]id:long[}]\"}[1h])) > 3000\n"
+ },
+ {
+  "name": "RoyalRoadInternalAdBurnPerChapterViewHigh",
+  "severity": "warning",
+  "expr": "(\n  (\n    sum by (placement) (rate(AdvertisingHits_total{deployment_environment=\"Production\", service_name=\"RoyalRoad.Api\", filled=\"true\", size=\"300x250\", placement=~\"ChapterTop|ChapterBottom\"}[1h]))\n    / scalar(sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Api\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"v1/fiction/chapters/{id:long}\"}[1h])))\n  )\n  /\n  (\n    sum by (placement) (rate(AdvertisingHits_total{deployment_environment=\"Production\", service_name=\"RoyalRoad.Api\", filled=\"true\", size=\"300x250\", placement=~\"ChapterTop|ChapterBottom\"}[7d] offset 1d))\n    / scalar(sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Api\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"v1/fiction/chapters/{id:long}\"}[7d] offset 1d)))\n  )\n) > 1.5\n# Skip a near-empty hour (outage, metrics gap) where the ratio is noise.\nand on ()\nsum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Api\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"v1/fiction/chapters/{id:long}\"}[1h])) > 1\n"
+ },
+ {
+  "name": "RoyalRoadInternalAdBurnPerChapterViewHigh",
+  "severity": "warning",
+  "expr": "(\n  (\n    sum(rate(AdvertisingHits_total{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\"}[1h]))\n    / sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"Fiction/{fid:long}/{fslug}/Chapter/{id:long}/{slug}\"}[1h]))\n  )\n  /\n  (\n    sum(rate(AdvertisingHits_total{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\"}[7d] offset 1d))\n    / sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"Fiction/{fid:long}/{fslug}/Chapter/{id:long}/{slug}\"}[7d] offset 1d))\n  )\n) > 1.5\n# Skip a near-empty hour (outage, metrics gap) where the ratio is noise.\nand on ()\nsum(rate(http_server_request_duration_seconds_count{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\", http_request_method=\"GET\", http_response_status_code=\"200\", http_route=\"Fiction/{fid:long}/{fslug}/Chapter/{id:long}/{slug}\"}[1h])) > 1\n"
+ },
+ {
+  "name": "RoyalRoadPasswordResetEmailFlood",
+  "severity": "warning",
+  "expr": "sum(increase(aspnetcore_identity_user_generated_tokens_total{deployment_environment=\"Production\", aspnetcore_identity_token_purpose=\"reset_password\"}[1h])) > 150\n"
+ },
+ {
+  "name": "RoyalRoadPgRepackCapacityLow",
+  "severity": "warning",
+  "expr": "node_filesystem_avail_bytes{\n  namespace=\"royal-road\",\n  job=\"node-exporter\",\n  instance=\"host-db\",\n  device=\"/dev/md2\",\n  mountpoint=\"/\",\n  fstype=\"ext4\"\n} < 200 * 1024 * 1024 * 1024\n"
+ },
+ {
+  "name": "RoyalRoadPrivateMessageFlood",
+  "severity": "warning",
+  "expr": "sum(increase(aspnetcore_rate_limiting_requests_total{deployment_environment=\"Production\", aspnetcore_rate_limiting_policy=\"PrivateMessages\"}[1h])) > 350\n"
+ },
+ {
+  "name": "RoyalRoadPrivateMessageSpamDetections",
+  "severity": "warning",
+  "expr": "sum(increase(Pm_Detection_total{deployment_environment=\"Production\"}[1h])) > 40\n"
+ },
+ {
+  "name": "RoyalRoadRegistrationRefusalWave",
+  "severity": "warning",
+  "expr": "sum by (host, window) (increase(Rate_Limit_Refusals_total{deployment_environment=\"Production\", policy=\"registration\"}[1h])) > 100\n"
+ },
+ {
+  "name": "RoyalRoadSecondFactorFailures",
+  "severity": "warning",
+  "expr": "sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=~\"two_factor_authenticator|two_factor_recovery_code\", aspnetcore_identity_sign_in_result=\"failure\"}[1h])) > 15\n"
+ },
+ {
+  "name": "RoyalRoadSecondFactorRefusals",
+  "severity": "warning",
+  "expr": "sum by (host, window) (increase(Rate_Limit_Refusals_total{deployment_environment=\"Production\", policy=\"login\", window=~\"login-second-factor:.+\"}[30m])) > 0\n"
+ },
+ {
+  "name": "RoyalRoadSignInAccountRefusals",
+  "severity": "warning",
+  "expr": "sum by (host, window) (increase(Rate_Limit_Refusals_total{deployment_environment=\"Production\", policy=\"login\", window=~\"login-password:.+|forgotten-email:.+\"}[1h])) > 100\n"
+ },
+ {
+  "name": "RoyalRoadSignInFailuresOutnumberSuccesses",
+  "severity": "warning",
+  "expr": "(\n  sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=\"password\", aspnetcore_identity_sign_in_result=\"failure\"}[1h]))\n  >= 100\n)\nand on (service_name)\n(\n  sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=\"password\", aspnetcore_identity_sign_in_result=\"failure\"}[1h]))\n  > on (service_name) (\n    sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=\"password\", aspnetcore_identity_sign_in_result=~\"success|requires_two_factor\"}[1h]))\n    or\n    0 * sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=\"password\", aspnetcore_identity_sign_in_result=\"failure\"}[1h]))\n  )\n)\n"
+ },
+ {
+  "name": "RoyalRoadSignInFlood",
+  "severity": "warning",
+  "expr": "(\n  sum by (service_name) (increase(aspnetcore_rate_limiting_requests_total{deployment_environment=\"Production\", aspnetcore_rate_limiting_policy=\"Login\"}[1h]))\n  > 1500\n)\nand on (service_name)\n(\n  sum by (service_name) (increase(aspnetcore_rate_limiting_requests_total{deployment_environment=\"Production\", aspnetcore_rate_limiting_policy=\"Login\"}[1h]))\n  > 4 * (\n    sum by (service_name) (increase(aspnetcore_identity_sign_in_authenticate_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_sign_in_type=\"password\", aspnetcore_identity_sign_in_result=~\"success|requires_two_factor\"}[1h]))\n    + 50\n  )\n)\n"
+ },
+ {
+  "name": "RoyalRoadSignInLimitsInMemory",
+  "severity": "warning",
+  "expr": "sum by (host) (increase(Rate_Limit_Fallbacks_total{deployment_environment=\"Production\"}[5m])) > 0\n"
+ },
+ {
+  "name": "RoyalRoadSignInMetricsAbsent",
+  "severity": "warning",
+  "expr": "absent(aspnetcore_rate_limiting_requests_total{deployment_environment=\"Production\", service_name=\"RoyalRoad.Web.Website\", aspnetcore_rate_limiting_policy=\"Login\"})\n"
+ },
+ {
+  "name": "RoyalRoadSignInNetworkRefusals",
+  "severity": "warning",
+  "expr": "sum by (host) (increase(Rate_Limit_Refusals_total{deployment_environment=\"Production\", policy=\"login\", window=\"login:15m\"}[15m])) > 100\n"
+ },
+ {
+  "name": "RoyalRoadSignUpSurge",
+  "severity": "warning",
+  "expr": "sum(increase(aspnetcore_identity_user_create_duration_seconds_count{deployment_environment=\"Production\", aspnetcore_identity_result=\"success\"}[1h])) > 120\n"
+ },
+ {
+  "name": "SeaweedFSVolumeSlotsLow",
+  "severity": "critical",
+  "expr": "# 2026-11-12 outage: -max=0 auto-sized the server to 46 slots on\n# a half-empty disk; once all were used the master had no\n# writable volume for nodestore-fast and every Sentry event save\n# failed (PutObject InternalError) for ~1 h. A full disk also\n# blocks volume.tier.upload, so slot exhaustion does not\n# self-heal. Each new TTL bucket/day needs a fresh volume.\nmax by (namespace, instance) (SeaweedFS_volumeServer_max_volumes{job=\"seaweedfs-volume\"})\n- on (namespace, instance)\nsum by (namespace, instance) (SeaweedFS_volumeServer_volumes{job=\"seaweedfs-volume\"})\n< 5\n"
+ },
+ {
+  "name": "SentryConsumerCrashLooping",
+  "severity": "warning",
+  "expr": "# container=~ filter intentionally dropped: the Snuba consumers\n# run container \"sentry-snuba\", taskworkers \"taskworker\", etc.;\n# any restart burst on an ingestion pod matters. Threshold 2\n# (was 3) because CrashLoopBackOff caps its backoff at 5m, so a\n# dead-loop yields exactly ~3 restarts/15m and slipped past >3.\n# Suppressed while kafka itself flaps: consumers exit fatally on\n# broker connection loss, so every planned or spontaneous broker\n# restart otherwise pages as ~11 concurrent \"consumer crash\n# loops\". The SentryKafkaBroker* alerts below fire instead; a\n# consumer loop that outlives the blip re-pages once it ages out\n# of the window. The 25m blip lookback deliberately exceeds the\n# consumer [15m] window so suppression cannot lapse mid-tail and\n# re-page a dead storm.\nsum by (namespace, pod) (\n  increase(kube_pod_container_status_restarts_total{\n    namespace=\"sentry\",\n    pod=~\"sentry-(snuba-.*|issue-occurrence-consumer|post-process-forward-.*|ingest-.*|taskworker-ingest|relay|web)-.*\"\n  }[15m])\n) > 2\nunless on (namespace) (\n  (\n    min_over_time(kube_statefulset_status_replicas_ready{\n      namespace=\"sentry\",\n      statefulset=\"kafka\"\n    }[25m]) == 0\n  )\n  or\n  sum by (namespace) (\n    increase(kube_pod_container_status_restarts_total{\n      namespace=\"sentry\",\n      pod=\"kafka-0\"\n    }[25m])\n  ) > 0\n)\n"
+ },
+ {
+  "name": "SentryConsumerDegraded",
+  "severity": "warning",
+  "expr": "# Persistent partial shortfall (stuck rollout, unschedulable pod).\n# HPA-scaled deployments are excluded: during sustained scale-up\n# available < spec is normal, and a pod that never becomes ready\n# there still shows up as CrashLooping or as a stuck HPA.\n(\n  kube_deployment_status_replicas_available{\n    namespace=\"sentry\",\n    deployment=~\"sentry-(snuba-.*|issue-occurrence-consumer|post-process-forward-.*|ingest-.*|taskworker-ingest|relay|web)\"\n  }\n  <\n  kube_deployment_spec_replicas{\n    namespace=\"sentry\",\n    deployment=~\"sentry-(snuba-.*|issue-occurrence-consumer|post-process-forward-.*|ingest-.*|taskworker-ingest|relay|web)\"\n  }\n)\nunless on (namespace, deployment)\nlabel_replace(\n  kube_horizontalpodautoscaler_info{namespace=\"sentry\", scaletargetref_kind=\"Deployment\"},\n  \"deployment\", \"$1\", \"scaletargetref_name\", \"(.*)\"\n)\n"
+ },
+ {
+  "name": "SentryConsumerUnavailable",
+  "severity": "warning",
+  "expr": "# Covers every ingestion-path workload, not just the three\n# original taskworker-era deployments. The 2026-09-27 outage\n# happened with the three named deployments all healthy:\n# the dead components were sentry-snuba-* consumers.\n# Fires only when a deployment has NO available replica. The old\n# \"available < spec\" form flapped 66x in 3 days on HPA-driven\n# sentry-taskworker-ingest scale-ups (2026-11-12); partial\n# shortfalls are SentryConsumerDegraded below.\nkube_deployment_status_replicas_available{\n  namespace=\"sentry\",\n  deployment=~\"sentry-(snuba-.*|issue-occurrence-consumer|post-process-forward-.*|ingest-.*|taskworker-ingest|relay|web)\"\n} == 0\nand\nkube_deployment_spec_replicas{\n  namespace=\"sentry\",\n  deployment=~\"sentry-(snuba-.*|issue-occurrence-consumer|post-process-forward-.*|ingest-.*|taskworker-ingest|relay|web)\"\n} > 0\n"
+ },
+ {
+  "name": "SentryIngestionFlatline",
+  "severity": "critical",
+  "expr": "sum(increase(sentry_events_processed{\n  job=\"statsd-exporter-prometheus-statsd-exporter\"\n}[15m])) == 0\n# Also fire if the series disappears entirely (exporter restart\n# loses the counter, or statsd stops receiving): == 0 alone\n# returns nothing on an empty vector and would never fire.\nor\nabsent_over_time(sentry_events_processed{\n  job=\"statsd-exporter-prometheus-statsd-exporter\"\n}[15m])\n"
+ },
+ {
+  "name": "SentryKafkaBrokerDown",
+  "severity": "critical",
+  "expr": "# Guards the suppression blind spot: a kafka stuck crash-looping\n# keeps the restart-blip window permanently true, so consumer-side\n# alerts stay suppressed for the whole outage. This rule is the\n# page for that case (StatefulSet, so the deployment-based\n# SentryConsumerUnavailable cannot see it).\nkube_statefulset_status_replicas_ready{\n  namespace=\"sentry\",\n  statefulset=\"kafka\"\n}\n<\nkube_statefulset_replicas{\n  namespace=\"sentry\",\n  statefulset=\"kafka\"\n}\n"
+ },
+ {
+  "name": "SentryKafkaBrokerRestarted",
+  "severity": "warning",
+  "expr": "# Root-cause companion to the SentryConsumerCrashLooping\n# suppression: the broker blip itself pages here once, instead\n# of as one alert per consumer pod. Both signals needed: the\n# ready-count dip catches pod recreation (restarts_total resets\n# on a new pod and misses it), the restarts blip catches fast\n# in-pod restarts that fall between scrapes.\n(\n  min_over_time(kube_statefulset_status_replicas_ready{\n    namespace=\"sentry\",\n    statefulset=\"kafka\"\n  }[25m]) == 0\n)\nor\nsum by (namespace) (\n  increase(kube_pod_container_status_restarts_total{\n    namespace=\"sentry\",\n    pod=\"kafka-0\"\n  }[25m])\n) > 0\n"
+ },
+ {
+  "name": "SentryTaskworkerProcessingDeadlineExceeded",
+  "severity": "warning",
+  "expr": "increase(sentry_taskworker_worker_processing_deadline_exceeded{\n  job=\"statsd-exporter-prometheus-statsd-exporter\"\n}[15m]) > 0\n"
+ },
+ {
+  "name": "SigNozDown",
+  "severity": "critical",
+  "expr": "min by (service) (probe_success{job=\"signoz-blackbox\"}) == 0\n"
+ },
+ {
+  "name": "TargetDown",
+  "severity": "warning",
+  "expr": "(up == 0) and on (job, namespace, service) (100 * (count by (job, namespace, service) (up == 0) / count by (job, namespace, service) (up)) > 10)"
+ },
+ {
+  "name": "ThanosNoRuleEvaluations",
+  "severity": "critical",
+  "expr": "sum(rate(prometheus_rule_evaluations_total{job=\"thanos-ruler\"}[2m])) <= 0\n  and\nsum(thanos_rule_loaded_rules{job=\"thanos-ruler\"}) > 0\n"
+ },
+ {
+  "name": "ThanosQueryGrpcClientErrorRate",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(grpc_client_handled_total{grpc_code!=\"OK\", job=\"thanos-querier\"}[5m]))\n/\n  sum by (job) (rate(grpc_client_started_total{job=\"thanos-querier\"}[5m]))\n) * 100 > 5\n"
+ },
+ {
+  "name": "ThanosQueryGrpcServerErrorRate",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(grpc_server_handled_total{grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\", job=\"thanos-querier\"}[5m]))\n/\n  sum by (job) (rate(grpc_server_started_total{job=\"thanos-querier\"}[5m]))\n* 100 > 5\n)\n"
+ },
+ {
+  "name": "ThanosQueryHighDNSFailures",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(thanos_query_store_apis_dns_failures_total{job=\"thanos-querier\"}[5m]))\n/\n  sum by (job) (rate(thanos_query_store_apis_dns_lookups_total{job=\"thanos-querier\"}[5m]))\n) * 100 > 1\n"
+ },
+ {
+  "name": "ThanosQueryHttpRequestQueryErrorRateHigh",
+  "severity": "critical",
+  "expr": "(\n  sum(rate(http_requests_total{code=~\"5..\", job=\"thanos-querier\", handler=\"query\"}[5m]))\n/\n  sum(rate(http_requests_total{job=\"thanos-querier\", handler=\"query\"}[5m]))\n) * 100 > 5\n"
+ },
+ {
+  "name": "ThanosQueryHttpRequestQueryRangeErrorRateHigh",
+  "severity": "critical",
+  "expr": "(\n  sum(rate(http_requests_total{code=~\"5..\", job=\"thanos-querier\", handler=\"query_range\"}[5m]))\n/\n  sum(rate(http_requests_total{job=\"thanos-querier\", handler=\"query_range\"}[5m]))\n) * 100 > 5\n"
+ },
+ {
+  "name": "ThanosQueryInstantLatencyHigh",
+  "severity": "critical",
+  "expr": "(\n  histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=\"thanos-querier\", handler=\"query\"}[5m]))) > 40\nand\n  sum by (job) (rate(http_request_duration_seconds_bucket{job=\"thanos-querier\", handler=\"query\"}[5m])) > 0\n)\n"
+ },
+ {
+  "name": "ThanosQueryRangeLatencyHigh",
+  "severity": "critical",
+  "expr": "(\n  histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=\"thanos-querier\", handler=\"query_range\"}[5m]))) > 90\nand\n  sum by (job) (rate(http_request_duration_seconds_count{job=\"thanos-querier\", handler=\"query_range\"}[5m])) > 0\n)\n"
+ },
+ {
+  "name": "ThanosRuleAlertmanagerHighDNSFailures",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(thanos_rule_alertmanagers_dns_failures_total{job=\"thanos-ruler\"}[5m]))\n/\n  sum by (job) (rate(thanos_rule_alertmanagers_dns_lookups_total{job=\"thanos-ruler\"}[5m]))\n* 100 > 1\n)\n"
+ },
+ {
+  "name": "ThanosRuleConfigReloadFailure",
+  "severity": "info",
+  "expr": "avg(thanos_rule_config_last_reload_successful{job=\"thanos-ruler\"}) by (job) != 1"
+ },
+ {
+  "name": "ThanosRuleGrpcErrorRate",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(grpc_server_handled_total{grpc_code=~\"Unknown|ResourceExhausted|Internal|Unavailable|DataLoss|DeadlineExceeded\", job=\"thanos-ruler\"}[5m]))\n/\n  sum by (job) (rate(grpc_server_started_total{job=\"thanos-ruler\"}[5m]))\n* 100 > 5\n)\n"
+ },
+ {
+  "name": "ThanosRuleHighRuleEvaluationFailures",
+  "severity": "critical",
+  "expr": "(\n  sum by (job) (rate(prometheus_rule_evaluation_failures_total{job=\"thanos-ruler\"}[5m]))\n/\n  sum by (job) (rate(prometheus_rule_evaluations_total{job=\"thanos-ruler\"}[5m]))\n* 100 > 5\n)\n"
+ },
+ {
+  "name": "ThanosRuleHighRuleEvaluationWarnings",
+  "severity": "info",
+  "expr": "sum by (job) (rate(thanos_rule_evaluation_with_warnings_total{job=\"thanos-ruler\"}[5m])) > 0\n"
+ },
+ {
+  "name": "ThanosRuleNoEvaluationFor10Intervals",
+  "severity": "info",
+  "expr": "time() -  max by (job, group) (prometheus_rule_group_last_evaluation_timestamp_seconds{job=\"thanos-ruler\"})\n>\n10 * max by (job, group) (prometheus_rule_group_interval_seconds{job=\"thanos-ruler\"})\n"
+ },
+ {
+  "name": "ThanosRuleQueryHighDNSFailures",
+  "severity": "warning",
+  "expr": "(\n  sum by (job) (rate(thanos_rule_query_apis_dns_failures_total{job=\"thanos-ruler\"}[5m]))\n/\n  sum by (job) (rate(thanos_rule_query_apis_dns_lookups_total{job=\"thanos-ruler\"}[5m]))\n* 100 > 1\n)\n"
+ },
+ {
+  "name": "ThanosRuleQueueIsDroppingAlerts",
+  "severity": "critical",
+  "expr": "sum by (job) (rate(thanos_alert_queue_alerts_dropped_total{job=\"thanos-ruler\"}[5m])) > 0\n"
+ },
+ {
+  "name": "ThanosRuleRuleEvaluationLatencyHigh",
+  "severity": "warning",
+  "expr": "(\n  sum by (job, pod, rule_group) (prometheus_rule_group_last_duration_seconds{job=\"thanos-ruler\"})\n>\n  sum by (job, pod, rule_group) (prometheus_rule_group_interval_seconds{job=\"thanos-ruler\"})\n)\n"
+ },
+ {
+  "name": "ThanosRuleSenderIsFailingAlerts",
+  "severity": "critical",
+  "expr": "sum by (job) (rate(thanos_alert_sender_alerts_dropped_total{job=\"thanos-ruler\"}[5m])) > 0\n"
+ },
+ {
+  "name": "ThanosSidecarPrometheusDown",
+  "severity": "critical",
+  "expr": "sum by (job, pod) (thanos_sidecar_prometheus_up{job=~\"prometheus-(k8s|user-workload)-thanos-sidecar\"} == 0)\n"
+ },
+ {
+  "name": "ThanosSidecarUnhealthy",
+  "severity": "critical",
+  "expr": "time() - max(thanos_sidecar_last_heartbeat_success_time_seconds{job=~\"prometheus-(k8s|user-workload)-thanos-sidecar\"}) by (job, pod) >= 600\n"
+ },
+ {
+  "name": "Watchdog",
+  "severity": "none",
+  "expr": "vector(1)"
+ },
+ {
+  "name": "etcdBackendQuotaLowSpace",
+  "severity": "critical",
+  "expr": "(etcd_mvcc_db_total_size_in_bytes/etcd_server_quota_backend_bytes)*100 > 95\n"
+ },
+ {
+  "name": "etcdExcessiveDatabaseGrowth",
+  "severity": "warning",
+  "expr": "increase(((etcd_mvcc_db_total_size_in_bytes/etcd_server_quota_backend_bytes)*100)[240m:1m]) > 50\n"
+ },
+ {
+  "name": "etcdGRPCRequestsSlow",
+  "severity": "critical",
+  "expr": "histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job=~\".*etcd.*\", grpc_type=\"unary\"}[5m])) without(grpc_type))\n> 0.15\n"
+ },
+ {
+  "name": "etcdHTTPRequestsSlow",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, rate(etcd_http_successful_duration_seconds_bucket[5m]))\n> 0.15\n"
+ },
+ {
+  "name": "etcdHighCommitDurations",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket{job=~\".*etcd.*\"}[5m]))\n> 0.25\n"
+ },
+ {
+  "name": "etcdHighFsyncDurations",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~\".*etcd.*\"}[5m]))\n> 0.5\n"
+ },
+ {
+  "name": "etcdHighFsyncDurations",
+  "severity": "critical",
+  "expr": "histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=~\".*etcd.*\"}[5m]))\n> 1\n"
+ },
+ {
+  "name": "etcdHighNumberOfFailedHTTPRequests",
+  "severity": "warning",
+  "expr": "sum(rate(etcd_http_failed_total{job=~\".*etcd.*\", code!=\"404\"}[5m])) without (code) / sum(rate(etcd_http_received_total{job=~\".*etcd.*\"}[5m]))\nwithout (code) > 0.01\n"
+ },
+ {
+  "name": "etcdHighNumberOfFailedHTTPRequests",
+  "severity": "critical",
+  "expr": "sum(rate(etcd_http_failed_total{job=~\".*etcd.*\", code!=\"404\"}[5m])) without (code) / sum(rate(etcd_http_received_total{job=~\".*etcd.*\"}[5m]))\nwithout (code) > 0.05\n"
+ },
+ {
+  "name": "etcdHighNumberOfFailedProposals",
+  "severity": "warning",
+  "expr": "rate(etcd_server_proposals_failed_total{job=~\".*etcd.*\"}[15m]) > 5\n"
+ },
+ {
+  "name": "etcdHighNumberOfLeaderChanges",
+  "severity": "warning",
+  "expr": "increase((max without (instance) (etcd_server_leader_changes_seen_total{job=~\".*etcd.*\"}) or 0*absent(etcd_server_leader_changes_seen_total{job=~\".*etcd.*\"}))[1m:30s]) >= 4\n"
+ },
+ {
+  "name": "etcdInsufficientMembers",
+  "severity": "critical",
+  "expr": "sum(up{job=~\".*etcd.*\"} == bool 1) without (instance) < ((count(up{job=~\".*etcd.*\"}) without (instance) + 1) / 2)\n"
+ },
+ {
+  "name": "etcdMemberCommunicationSlow",
+  "severity": "warning",
+  "expr": "histogram_quantile(0.99, rate(etcd_network_peer_round_trip_time_seconds_bucket{job=~\".*etcd.*\"}[5m]))\n> 0.15\n"
+ },
+ {
+  "name": "etcdMembersDown",
+  "severity": "critical",
+  "expr": "max without (endpoint) (\n  sum without (instance) (up{job=~\".*etcd.*\"} == bool 0)\nor\n  count without (To) (\n    sum without (instance) (rate(etcd_network_peer_sent_failures_total{job=~\".*etcd.*\"}[120s])) > 0.01\n  )\n)\n> 0\n"
+ },
+ {
+  "name": "etcdNoLeader",
+  "severity": "critical",
+  "expr": "etcd_server_has_leader{job=~\".*etcd.*\"} == 0\n"
+ }
+]

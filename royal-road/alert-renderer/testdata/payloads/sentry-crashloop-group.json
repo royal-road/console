@@ -1,0 +1,74 @@
+{
+ "receiver": "discord_webhook",
+ "status": "firing",
+ "alerts": [
+  {
+   "status": "firing",
+   "labels": {
+    "alertgroup": "sentry-consumers",
+    "alertname": "SentryConsumerCrashLooping",
+    "namespace": "sentry",
+    "pod": "sentry-snuba-consumer-6ff4ff486f-ppgd5",
+    "severity": "warning"
+   },
+   "annotations": {
+    "description": "sentry/sentry-snuba-consumer-6ff4ff486f-ppgd5 restarted more than twice in fifteen minutes. Inspect the consumer group before its lag reaches Kafka retention.",
+    "summary": "Sentry consumer is repeatedly restarting"
+   },
+   "startsAt": "2026-11-23T15:19:00Z",
+   "endsAt": "0001-01-01T00:00:00Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=17904708190237270436&alert_id=100",
+   "fingerprint": "c0ffee00"
+  },
+  {
+   "status": "firing",
+   "labels": {
+    "alertgroup": "sentry-consumers",
+    "alertname": "SentryConsumerCrashLooping",
+    "namespace": "sentry",
+    "pod": "sentry-snuba-metrics-consumer-6fc69cdf6-x4xv5",
+    "severity": "warning"
+   },
+   "annotations": {
+    "description": "sentry/sentry-snuba-metrics-consumer-6fc69cdf6-x4xv5 restarted more than twice in fifteen minutes. Inspect the consumer group before its lag reaches Kafka retention.",
+    "summary": "Sentry consumer is repeatedly restarting"
+   },
+   "startsAt": "2026-11-23T15:19:00Z",
+   "endsAt": "0001-01-01T00:00:00Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=17904708190237270436&alert_id=101",
+   "fingerprint": "c0ffee01"
+  },
+  {
+   "status": "firing",
+   "labels": {
+    "alertgroup": "sentry-consumers",
+    "alertname": "SentryConsumerCrashLooping",
+    "namespace": "sentry",
+    "pod": "sentry-snuba-outcomes-consumer-7fbcdbbdd-4bh47",
+    "severity": "warning"
+   },
+   "annotations": {
+    "description": "sentry/sentry-snuba-outcomes-consumer-7fbcdbbdd-4bh47 restarted more than twice in fifteen minutes. Inspect the consumer group before its lag reaches Kafka retention.",
+    "summary": "Sentry consumer is repeatedly restarting"
+   },
+   "startsAt": "2026-11-23T15:19:00Z",
+   "endsAt": "0001-01-01T00:00:00Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=17904708190237270436&alert_id=102",
+   "fingerprint": "c0ffee02"
+  }
+ ],
+ "groupLabels": {
+  "alertname": "SentryConsumerCrashLooping"
+ },
+ "commonLabels": {
+  "alertgroup": "sentry-consumers",
+  "alertname": "SentryConsumerCrashLooping",
+  "namespace": "sentry",
+  "severity": "warning"
+ },
+ "commonAnnotations": {},
+ "externalURL": "http://vmalertmanager:9093",
+ "version": "4",
+ "groupKey": "{}/{severity=~\"info|warning|critical\"}:{\"alertname\": \"SentryConsumerCrashLooping\"}",
+ "truncatedAlerts": 0
+}

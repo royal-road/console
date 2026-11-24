@@ -1,4 +1,7 @@
-# openshift/monitoring-plugin: Observe > Alerting, Metrics, Dashboards, Targets.
+# openshift/monitoring-plugin: Observe > Metrics, Targets; the Alerting pages
+# at /monitoring/alerts (no menu item, patch 0006: Observe > Alerts in
+# observe-plugin replaces it) and the legacy dashboards at
+# /monitoring/dashboards (no menu item, patch 0004).
 # See "Monitoring plugin" in README.md for how it fits together.
 #
 # Placeholders:
@@ -87,10 +90,11 @@ spec:
       targetPort: http
       protocol: TCP
 ---
-# Observe > Dashboards reads dashboard ConfigMaps from this namespace through
-# the bridge's ServiceAccount (see monitoring-dashboard-example.yaml). On
-# OpenShift the cluster-monitoring-operator fills it; here we create it and
-# put our own dashboards in it.
+# The legacy dashboards (/monitoring/dashboards) read dashboard ConfigMaps
+# from this namespace through the bridge's ServiceAccount (see
+# monitoring-dashboard-example.yaml). On OpenShift the
+# cluster-monitoring-operator fills it; here we create it and put our own
+# dashboards in it.
 apiVersion: v1
 kind: Namespace
 metadata:

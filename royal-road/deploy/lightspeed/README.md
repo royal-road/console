@@ -217,7 +217,14 @@ questions about this cluster, and to cite.
 Sentry, so "why is my-app erroring?" combines the workload's state
 (pods, restarts, events, logs) with its unresolved Sentry issues. The system
 prompt in `40-ols-config.yaml` tells the model to look in both places and to
-match the application to a Sentry project by name with `find_projects`.
+match the application to a Sentry project by name with `find_projects`. Its
+links to the console's Sentry issue page carry the workload
+(`?namespace=&kind=&name=`), which sentry-plugin needs to check the user's
+access: the model takes the workload from the question, or resolves the
+issue's `server_name` (a pod) to its owner with the Kubernetes tools. Answers
+about a workload end with a link to its Observe tab
+(`/k8s/ns/<ns>/<plural>/<name>/observe`, observe-plugin; see
+[Observe plugin](../README.md#observe-plugin)).
 
 How it is kept read-only and contained:
 

@@ -1,0 +1,25 @@
+diff --git a/config/alerting.patch.json b/config/alerting.patch.json
+index 00a9726..a2e7662 100644
+--- a/config/alerting.patch.json
++++ b/config/alerting.patch.json
+@@ -10,6 +10,7 @@
+         "href": "/monitoring/alerts",
+         "perspective": "admin",
+         "section": "observe",
++        "insertAfter": ["perses-dashboards", "observe-explorer"],
+         "startsWith": [
+           "monitoring/alertrules",
+           "monitoring/silences",
+diff --git a/config/targets.patch.json b/config/targets.patch.json
+index 0d12f4a..165f8b6 100644
+--- a/config/targets.patch.json
++++ b/config/targets.patch.json
+@@ -10,7 +10,7 @@
+         "href": "/monitoring/targets",
+         "perspective": "admin",
+         "section": "observe",
+-        "insertAfter": ["perses-dashboards", "metrics"]
++        "insertAfter": ["distributed-tracing", "monitoring-logs", "metrics"]
+       }
+     }
+   },

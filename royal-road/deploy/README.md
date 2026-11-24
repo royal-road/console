@@ -112,6 +112,14 @@ independent of the cutover. See [`tracing/README.md`](tracing/README.md), and
 [`crds/README.md`](crds/README.md#sentryprojectbinding) for the
 `SentryProjectBinding` CRD that scopes Sentry data.
 
+## Alert notifications
+
+Discord alert messages with the rule's summary, identifying labels, a chart
+of the rule with its threshold and a link to the workload's Observe tab come
+from `alert-renderer`, a webhook receiver next to vmalertmanager in
+`openshift-monitoring`. See [`alert-renderer/README.md`](alert-renderer/README.md)
+for the manifests and the receiver change in the infrastructure repository.
+
 ## Branding
 
 The masthead, the About modal, the browser tab title and the favicon show
@@ -398,8 +406,10 @@ the pinned `release-5.0` commit by
 3. Optional: apply `monitoring-dashboard-example.yaml` for a first dashboard.
 4. Roll out the console. Check that
    `https://<console-host>/api/plugins/monitoring-plugin/plugin-manifest.json`
-   returns JSON and that **Observe** lists Alerting, Metrics, Dashboards and
-   Targets.
+   returns JSON and that **Observe** lists Metrics and Targets (and
+   Dashboards (Perses) with `monitoring-console-plugin`). Patch 0006 hides the
+   Alerting item; observe-plugin's **Alerts** replaces it, and
+   `/monitoring/alerts` still opens.
 
 **Plain HTTP.** The plugin backend serves HTTP on 9443 when it gets no
 `-cert`/`-key`. Only the bridge fetches the plugin, inside the cluster, and
@@ -437,6 +447,12 @@ non-admin user those requests fail. The stock console does the same; it is not
 caused by the plugin.
 
 ### Dashboards
+
+The Perses dashboards are the dashboards (see [Perses dashboards](#perses-dashboards)),
+so patch 0004 removes the legacy **Dashboards** item from the Observe menu.
+The legacy page still works at `/monitoring/dashboards` (and as the
+developer perspective's Observe › Dashboards tab) for old links and
+bookmarks. It reads ConfigMaps as follows.
 
 The bridge lists ConfigMaps in `openshift-config-managed` with label
 `console.openshift.io/dashboard=true`, using its own ServiceAccount (not the
@@ -668,6 +684,114 @@ kind cluster with VictoriaLogs v1.53.0 (production's version), `logging-view-plu
 | Tenancy | A ServiceAccount with `view` in team-a (bridge run with its token, and directly at the proxy): only team-a, nothing in `infrastructure`, including with `{namespace="team-b"}` in the query, a client-sent `extra_stream_filters`, a `union` subquery, `stream_field_values` and an `AccountID` header. No token or an invalid token: 401. `query_time_range`: 404. Cluster-admin: all namespaces. |
 | NetworkPolicies | A pod in another namespace can't reach the proxy or VictoriaLogs; a pod with the console label reaches the proxy; the proxy reaches VictoriaLogs. |
 
+## Observe plugin
+
+observe-plugin ([royal-road/console-plugins](https://github.com/royal-road/console-plugins),
+`plugins/observe/`) joins the observability pages into one place to
+investigate a workload. Alerts, metrics, logs, Sentry errors and rollouts
+are scoped to the workload and share one time window, which travels in the
+URL (`from`/`to`). It adds:
+
+- **Observe › Overview** (`/observe/overview`; `/observe` redirects there): the
+  triage home, with workloads, their health and firing alerts grouped by
+  workload, and **Observe › Explorer**
+  (`/observe/explore`): search across workloads, pods, namespaces and alert
+  names.
+- An **Observe** tab on Deployments, StatefulSets, DaemonSets, Pods and
+  Namespaces (`/k8s/ns/<ns>/<plural>/<name>/observe`): golden signals with
+  rollout markers and alert bands, and a correlation timeline.
+- A **Logs** tab on Deployments, StatefulSets and DaemonSets (Pods keep
+  logging-view-plugin's Aggregated Logs tab).
+- **Investigate workload** and **Logs at alert time** on the alert details
+  page and in the alert list.
+
+It is static files only (`observe-plugin.yaml`, plain HTTP like the other
+static plugins) and reads data through the bridge with the user's own token:
+
+| Data | Through | Without it |
+|---|---|---|
+| Metrics, alerts, alerting rules and alert history (`ALERTS`) | the bridge's monitoring proxies (`/api/prometheus`, `/api/prometheus-tenancy`), as monitoring-plugin | No golden signals or alerts |
+| Silences: list, and **Acknowledge** (create) | the bridge's Alertmanager proxies (`/api/alertmanager/api/v2/silences`, `/api/alertmanager-tenancy/api/v2/silences?namespace=<ns>`), as monitoring-plugin | No acknowledged state; Acknowledge fails. **Production:** the tenancy path is not enforced yet (`:9092` reaches the cluster-wide check, so namespace-scoped users get 403; it needs the chain below), and silence create through `/api/alertmanager` has not been tried as a cluster admin |
+| Logs | logging-view-plugin's proxy, `/api/proxy/plugin/logging-view-plugin/backend/` (see [Logging plugin](#logging-plugin)) | Log panels can't load |
+| Traces | distributed-tracing-console-plugin's proxy to trace-federator, `/api/proxy/plugin/distributed-tracing-console-plugin/backend/` (see [Traces](#traces)). The trace scatter sends `slices=12`; an older federator ignores it and returns the most recent traces only. | No traces on the Traces tab and the trace lane |
+| Sentry errors (optional) | sentry-plugin's backend, `/api/proxy/plugin/sentry-plugin/backend/` | Errors show "not connected" |
+
+So it needs no `BRIDGE_PLUGIN_PROXY` entry and no NetworkPolicy of its own.
+Every path above is one the bridge or another plugin already routes (see
+[Monitoring endpoints](#monitoring-endpoints) for the hosts behind the
+monitoring proxies). The tenancy paths must enforce the namespace: for
+silences, the `:9092` target must check the user's access to `?namespace=`
+and let them create and expire only silences matching
+`namespace="<ns>"` (OpenShift uses kube-rbac-proxy plus prom-label-proxy for
+this). A target that checks cluster-wide access instead turns Acknowledge
+away for namespace-scoped users.
+Its links into the other pages need the matching pieces from this fork:
+monitoring-plugin patches 0003 (Metrics opens at the link's `from`/`to`),
+0004 (Observe › Dashboards lists only the Perses dashboards) and 0006
+(Observe › Alerts replaces the Alerting menu item; see
+[Monitoring plugin](#monitoring-plugin)), and the console image whose
+topology side panel links to the Observe tab.
+
+### Observability plugins
+
+The full set, in `BRIDGE_PLUGINS` order:
+
+| Plugin | Built from | Manifests | `BRIDGE_PLUGINS` entry | Also needs |
+|---|---|---|---|---|
+| monitoring-plugin | `royal-road/plugins/monitoring-plugin/` | `monitoring-plugin.yaml` | `monitoring-plugin=http://monitoring-plugin.<console-namespace>.svc.cluster.local:9443/` | |
+| monitoring-console-plugin (Perses) | COO's image | `monitoring-console-plugin.yaml`, `perses/` | see [Perses dashboards](#perses-dashboards) | |
+| logging-view-plugin | `royal-road/plugins/logging-view-plugin/` | `logging-view-plugin.yaml` | `logging-view-plugin=http://logging-view-plugin.<console-namespace>.svc.cluster.local:9002/` | `BRIDGE_PLUGIN_PROXY` entry |
+| sentry-plugin | console-plugins `plugins/sentry/` | console-plugins `plugins/sentry/deploy/` | `sentry-plugin=http://sentry-plugin.<console-namespace>.svc.cluster.local:8080/` | `BRIDGE_PLUGIN_PROXY` entry from its `deploy/plugin-proxy-entry.sh`, `BRIDGE_I18N_NAMESPACES` `plugin__sentry-plugin`, a read-only Sentry token, cert-manager |
+| observe-plugin | console-plugins `plugins/observe/` | `observe-plugin.yaml` | `observe-plugin=http://observe-plugin.<console-namespace>.svc.cluster.local:8080/` | `BRIDGE_I18N_NAMESPACES` `plugin__observe-plugin` |
+
+sentry-plugin adds the Errors tab on workloads and the Sentry issue page
+(`/sentry/<org>/issues/<id>?namespace=&kind=&name=`). It maps a workload to
+a Sentry project with the `sentry.royalroad.com/project` annotation on the
+workload or its namespace; see its README.
+
+### Deploy
+
+Each step is safe on its own; nothing changes for users until step 4.
+
+1. **Logs.** Check that logging-view-plugin runs and its
+   `BRIDGE_PLUGIN_PROXY` entry is set ([Logging plugin](#logging-plugin)).
+2. **Errors (optional).** Deploy sentry-plugin from console-plugins
+   (`plugins/sentry/deploy/sentry-plugin.yaml` and its Secret) and wait for
+   it to be ready. Annotate the workloads or namespaces that report to
+   Sentry.
+3. **observe-plugin.** Replace the placeholders in
+   [`observe-plugin.yaml`](observe-plugin.yaml) and apply it. Apply the
+   `observe-plugin` ConsolePlugin from [`consoleplugins.yaml`](consoleplugins.yaml).
+   Wait for the Deployment to be ready. Nothing loads it yet.
+4. **Console.** Roll out the monitoring-plugin image and the console image
+   built from the same commit as these manifests, and append to the console
+   Deployment's env (keep the existing values):
+
+   ```yaml
+   - name: BRIDGE_PLUGINS
+     value: <existing>,sentry-plugin=http://sentry-plugin.<console-namespace>.svc.cluster.local:8080/,observe-plugin=http://observe-plugin.<console-namespace>.svc.cluster.local:8080/
+   - name: BRIDGE_I18N_NAMESPACES
+     value: <existing>,plugin__sentry-plugin,plugin__observe-plugin
+   ```
+
+   Leave out the sentry-plugin parts if you skipped step 2, and add its
+   `BRIDGE_PLUGIN_PROXY` entry if you didn't.
+5. **Verify.** `https://<console-host>/api/plugins/observe-plugin/plugin-manifest.json`
+   returns JSON. Observe › Overview lists workloads with their health. A
+   Deployment's Observe tab shows its golden signals, rollouts and logs, and
+   Errors if sentry-plugin runs. From an alert, **Investigate workload** opens
+   that tab at the alert's time. A Metrics link from the tab opens the query
+   browser at the same window. Topology › a Deployment › Observe ›
+   **Open Observe tab** opens the tab. Lightspeed's answers about a workload
+   link to it.
+
+**Rollback:** remove `observe-plugin` from `BRIDGE_PLUGINS` (and
+`BRIDGE_I18N_NAMESPACES`). The topology link can stay; without observe-plugin
+it opens the workload page with a missing tab. Patches 0003 and 0004 can stay
+too. Patch 0006 can't: it removes the Alerting menu item that Observe › Alerts
+replaces, so also roll monitoring-plugin back to an image without it, or the
+menu has no alerts entry (`/monitoring/alerts` still opens by URL).
+
 ## Web Terminal
 
 Optional, applied separately from the cutover. [`web-terminal/`](web-terminal/README.md)
@@ -684,7 +808,8 @@ Cluster Observability Operator (COO) installs it for a `UIPlugin` of type
 Monitoring with `perses.enabled`. Here the same pieces are plain manifests:
 `monitoring-console-plugin.yaml` and `perses/` (kustomize). The legacy
 Observe › Dashboards page (`monitoring-plugin`, ConfigMaps in
-`openshift-config-managed`) stays as it is.
+`openshift-config-managed`) keeps its route but has no menu item (patch 0004,
+see [Dashboards](#dashboards)).
 
 ### Versions
 

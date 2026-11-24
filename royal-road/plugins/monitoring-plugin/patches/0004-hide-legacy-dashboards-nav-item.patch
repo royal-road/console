@@ -1,0 +1,50 @@
+diff --git a/config/legacy-dashboards.patch.json b/config/legacy-dashboards.patch.json
+index 597e635..fefc292 100644
+--- a/config/legacy-dashboards.patch.json
++++ b/config/legacy-dashboards.patch.json
+@@ -1,19 +1,4 @@
+ [
+-  {
+-    "op": "add",
+-    "path": "/extensions/0",
+-    "value": {
+-      "type": "console.navigation/href",
+-      "properties": {
+-        "id": "dashboards",
+-        "name": "%plugin__monitoring-plugin~Dashboards%",
+-        "href": "/monitoring/dashboards",
+-        "perspective": "admin",
+-        "section": "observe",
+-        "insertAfter": "metrics"
+-      }
+-    }
+-  },
+   {
+     "op": "add",
+     "path": "/extensions/0",
+diff --git a/config/metrics.patch.json b/config/metrics.patch.json
+index a6929b3..05456b7 100644
+--- a/config/metrics.patch.json
++++ b/config/metrics.patch.json
+@@ -10,7 +10,7 @@
+         "href": "/monitoring/query-browser",
+         "perspective": "admin",
+         "section": "observe",
+-        "insertAfter": "alerts"
++        "insertAfter": "alerting"
+       }
+     }
+   },
+diff --git a/config/targets.patch.json b/config/targets.patch.json
+index 784b827..0d12f4a 100644
+--- a/config/targets.patch.json
++++ b/config/targets.patch.json
+@@ -10,7 +10,7 @@
+         "href": "/monitoring/targets",
+         "perspective": "admin",
+         "section": "observe",
+-        "insertAfter": "dashboards"
++        "insertAfter": ["perses-dashboards", "metrics"]
+       }
+     }
+   },

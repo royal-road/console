@@ -43,6 +43,7 @@ type SearchRequest struct {
 	ParseErr   error     // why Raw is outside the supported subset
 	Start, End time.Time // zero when the client sent none
 	Limit      int
+	Slices     int               // search this many equal sub-windows; <= 1: one query
 	Params     map[string]string // original query parameters (Tempo passthrough)
 	Scope      *Scope
 }
