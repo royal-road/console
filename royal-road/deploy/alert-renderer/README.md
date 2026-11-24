@@ -41,15 +41,22 @@ It passes the `restricted` Pod Security level.
    kubectl -n openshift-monitoring rollout status deploy/alert-renderer
    ```
 
-2. Try it before switching: port-forward and post one of
-   `royal-road/alert-renderer/testdata/payloads/*.json`. This posts a real
-   message to the channel.
+2. Try it before switching, without touching the alert channel: copy the
+   Discord webhook of a private test channel into a temporary Secret, point a
+   second renderer (or `dev/e2e.sh` locally) at it, and post one of
+   `royal-road/alert-renderer/testdata/payloads/*.json`. Posting to the
+   production renderer sends a real message to the alert channel, so don't
+   use it for testing. Nothing in CI or the tests talks to Discord.
 
    ```sh
-   kubectl -n openshift-monitoring port-forward svc/alert-renderer 8080 &
+   kubectl -n openshift-monitoring port-forward svc/<test-renderer> 8080 &
    curl --data-binary @royal-road/alert-renderer/testdata/payloads/ingress-5xx-firing.json \
      http://127.0.0.1:8080/alertmanager
    ```
+
+   The Deployment pulls from the internal registry with the `harbor` pull
+   Secret; copy it from `openshift-console` into `openshift-monitoring` if it
+   is missing.
 
 3. Switch the receiver. In the infrastructure repository's
    `observability/victoria-metrics/vmalertmanager-config.patch.yaml`, replace

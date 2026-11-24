@@ -31,6 +31,9 @@ spec:
         app.kubernetes.io/part-of: alerting
     spec:
       automountServiceAccountToken: false
+      # Pull Secret for the internal registry, as on the other console images.
+      imagePullSecrets:
+        - name: harbor
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
