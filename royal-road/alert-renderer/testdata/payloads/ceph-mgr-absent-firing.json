@@ -1,0 +1,39 @@
+{
+ "receiver": "discord_webhook",
+ "status": "firing",
+ "alerts": [
+  {
+   "status": "firing",
+   "labels": {
+    "alertgroup": "ceph-mgr-status",
+    "alertname": "CephMgrIsAbsent",
+    "prometheus": "openshift-monitoring/k8s",
+    "severity": "critical"
+   },
+   "annotations": {
+    "description": "Ceph Manager has disappeared from Prometheus target discovery.",
+    "message": "Storage metrics collector service not available anymore.",
+    "severity_level": "critical",
+    "storage_type": "ceph"
+   },
+   "startsAt": "2026-11-24T09:50:00Z",
+   "endsAt": "0001-01-01T00:00:00Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=5300336507386030507&alert_id=1",
+   "fingerprint": "e00e0001"
+  }
+ ],
+ "groupLabels": {
+  "alertname": "CephMgrIsAbsent"
+ },
+ "commonLabels": {
+  "alertgroup": "ceph-mgr-status",
+  "alertname": "CephMgrIsAbsent",
+  "prometheus": "openshift-monitoring/k8s",
+  "severity": "critical"
+ },
+ "commonAnnotations": {},
+ "externalURL": "http://vmalertmanager:9093",
+ "version": "4",
+ "groupKey": "{}/{severity=~\"info|warning|critical\"}:{\"alertname\": \"CephMgrIsAbsent\"}",
+ "truncatedAlerts": 0
+}
