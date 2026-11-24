@@ -18,6 +18,25 @@ type Config struct {
 	Kubernetes KubernetesConfig `json:"kubernetes"`
 	Authz      AuthzConfig      `json:"authz"`
 	Backends   []BackendConfig  `json:"backends"`
+	// Profiles, when set, serves /profiles/* from Pyroscope.
+	Profiles *ProfilesConfig `json:"profiles"`
+}
+
+// ProfilesConfig is the Pyroscope passthrough (profiles.go).
+type ProfilesConfig struct {
+	URL     string   `json:"url"`
+	Timeout Duration `json:"timeout"`
+	// MaxWindow bounds every call and each side of a Diff. Keep it at or
+	// under Pyroscope's max_query_length, which an overflowing window can
+	// slip past.
+	MaxWindow Duration `json:"maxWindow"`
+	// MaxNodes is the ceiling for maxNodes; larger requests are clamped.
+	MaxNodes int64 `json:"maxNodes"`
+	// LegacyServices lists, per namespace, the service_name values whose
+	// profiles carry no namespace label yet but are known to come from that
+	// namespace. Remove an entry once the service's profiles have carried
+	// the namespace label for the store's retention.
+	LegacyServices map[string][]string `json:"legacyServices"`
 }
 
 type KubernetesConfig struct {
@@ -159,6 +178,11 @@ func loadConfig(path string) (*Config, error) {
 	if len(c.Backends) == 0 {
 		return nil, fmt.Errorf("no backends configured")
 	}
+	if p := c.Profiles; p != nil {
+		if err := p.validate(); err != nil {
+			return nil, fmt.Errorf("profiles: %w", err)
+		}
+	}
 	return &c, nil
 }
 
@@ -175,4 +199,41 @@ func readSecretFile(path string) (string, error) {
 		return "", fmt.Errorf("%s is empty", path)
 	}
 	return s, nil
+}
+
+func (p *ProfilesConfig) validate() error {
+	if p.URL == "" {
+		return fmt.Errorf("url is required")
+	}
+	p.URL = strings.TrimRight(p.URL, "/")
+	if p.Timeout.Duration == 0 {
+		p.Timeout.Duration = 20 * time.Second
+	}
+	if p.MaxWindow.Duration == 0 {
+		p.MaxWindow.Duration = 24 * time.Hour
+	}
+	if p.MaxNodes == 0 {
+		p.MaxNodes = 16384
+	}
+	if p.MaxNodes < 1 || p.Timeout.Duration < 0 || p.MaxWindow.Duration < 0 {
+		return fmt.Errorf("timeout, maxWindow and maxNodes must be positive")
+	}
+	// A service listed under two namespaces would show its unlabelled
+	// profiles in both.
+	listedIn := map[string]string{}
+	for ns, services := range p.LegacyServices {
+		if !isNamespace(ns) {
+			return fmt.Errorf("legacyServices: %q is not a namespace name", ns)
+		}
+		for _, s := range services {
+			if s == "" {
+				return fmt.Errorf("legacyServices[%s]: empty service name", ns)
+			}
+			if other, ok := listedIn[s]; ok && other != ns {
+				return fmt.Errorf("legacyServices: %q is listed under both %s and %s", s, other, ns)
+			}
+			listedIn[s] = ns
+		}
+	}
+	return nil
 }

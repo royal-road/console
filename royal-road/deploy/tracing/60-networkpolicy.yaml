@@ -1,6 +1,8 @@
 # Only the console (and the metrics scraper) may call the federator; the
 # plugin's static files only need the console. Egress stays open: the
-# federator calls VictoriaTraces, SigNoz, Sentry and the API server.
+# federator calls VictoriaTraces, SigNoz, Sentry, Pyroscope and the API
+# server. Pyroscope's own ingress policy must admit the federator pods
+# (README.md, "Profiles").
 # Adjust the namespace labels to where the console and the scraper run.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -7,10 +7,13 @@ Adds **Observe › Traces** to the console. Traces are searched and opened acros
 
 The plugin is [`royal-road/plugins/distributed-tracing-console-plugin`](../../plugins/distributed-tracing-console-plugin/README.md).
 
+The federator also serves **profiles** from Pyroscope to observe-plugin's Profiles tab, through the same plugin proxy route (`/api/proxy/plugin/distributed-tracing-console-plugin/backend/profiles/...`). See [Profiles](#profiles).
+
 ```
 browser ─▶ bridge ─(/api/plugins/distributed-tracing-console-plugin/)──────────▶ plugin (static files)
                   └(/api/proxy/plugin/distributed-tracing-console-plugin/backend/,
                     authorize: true → user's token)─▶ trace-federator ─▶ VictoriaTraces / SigNoz / Sentry
+                                                                     ├▶ Pyroscope (/profiles/*)
                                                                      └▶ API server (SelfSubjectAccessReview with the user's token)
 ```
 
@@ -18,7 +21,7 @@ browser ─▶ bridge ─(/api/plugins/distributed-tracing-console-plugin/)─�
 |---|---|
 | `00-namespace.yaml` | Namespace `tracing` |
 | `10-rbac.yaml` | Federator ServiceAccount (lists SentryProjectBindings only), and ClusterRole `trace-reader` for the OTLP stores |
-| `20-config.yaml` | Federator configuration, with placeholders |
+| `20-config.yaml` | Federator configuration, with placeholders. The `profiles` block points at Pyroscope. |
 | `30-federator.yaml` | Federator Deployment (2 replicas), Service and PDB. Reads Secret `trace-federator-credentials`. |
 | `40-console-plugin.yaml` | Plugin Deployment and Service |
 | `50-consoleplugin.yaml` | ConsolePlugin for Administration › Dynamic Plugins (display only) |
@@ -65,12 +68,34 @@ browser ─▶ bridge ─(/api/plugins/distributed-tracing-console-plugin/)─�
    - Create `SentryProjectBinding`s (cluster-admins only) for the Sentry projects users should see; see [`../crds/README.md`](../crds/README.md#sentryprojectbinding).
    - Cluster-admins can read every store and every bound project.
 
+## Profiles
+
+The `profiles` block in `20-config.yaml` turns on `/profiles/*`. Without it those paths answer 404 and observe-plugin shows "Profiles not connected".
+
+1. Pyroscope must admit the federator. Its ingress NetworkPolicy (`pyroscope-ingress` in namespace `pyroscope`, kept in the infrastructure repository) needs this entry on the port-4040 rule, with both selectors in one element so only the federator pods match:
+
+   ```yaml
+   - namespaceSelector:
+       matchLabels:
+         kubernetes.io/metadata.name: tracing
+     podSelector:
+       matchLabels:
+         app.kubernetes.io/name: trace-federator
+   ```
+
+2. Access needs no new role: a user sees a namespace's profiles when they can `get pods` there.
+3. `legacyServices` lists, per namespace, the `service_name` values whose profiles have no `namespace` label yet. Today that is `royalroad.website` in `royal-road`. When to remove an entry is in [the federator README](../../trace-federator/README.md#profiles).
+4. Roll back by removing the `profiles` block and restarting the federator. Nothing else depends on it.
+
+The rules for selectors, windows and sizes are in [the federator README](../../trace-federator/README.md#profiles).
+
 ## Access model
 
 | Store | Rule |
 |---|---|
 | `access: rbac` (VictoriaTraces, SigNoz) | `get` on `traces.tracing.royalroad.com`, resourceName = store name. All or nothing per store: traces are not reliably namespaced. |
 | `access: sentry-bindings` (Sentry) | Only projects with a SentryProjectBinding, within its environments. Visible if the user can `get` a bound workload, or pods in a bound namespace. Admins see every bound project. |
+| Profiles (Pyroscope) | `get` on `pods` in the namespace. Every selector must name that namespace, or a service listed for it in `legacyServices`. |
 
 The instance dropdown lists only views with at least one readable store. A user with none sees "No trace stores available".
 

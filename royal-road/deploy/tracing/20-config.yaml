@@ -1,6 +1,7 @@
 # trace-federator configuration (JSON; see royal-road/trace-federator/README.md).
 # Placeholders in <...>. Backend names are what users see as "instances" in
 # the Traces page and what trace-reader's resourceNames refer to.
+# profiles: Pyroscope for observe-plugin's Profiles tab (README.md, "Profiles").
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -48,5 +49,12 @@ data:
           "searchTimeout": "10s",
           "traceTimeout": "8s"
         }
-      ]
+      ],
+      "profiles": {
+        "url": "http://pyroscope.pyroscope.svc:4040",
+        "timeout": "20s",
+        "maxWindow": "24h",
+        "maxNodes": 16384,
+        "legacyServices": {"royal-road": ["royalroad.website"]}
+      }
     }

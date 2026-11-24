@@ -2,6 +2,16 @@
 
 Newest first. One entry per work package from `FORK.md`.
 
+## Unified Observe: profiles
+
+- trace-federator serves profiles from Pyroscope for observe-plugin's Profiles tab: `GET /profiles/{namespace}/scopes` and `POST /profiles/{namespace}/{method}` for `SelectMergeStacktraces`, `SelectSeries`, `Diff`, `Series`, `LabelNames` and `LabelValues`, passed to Pyroscope's Connect API.
+  - Access: `get pods` in the namespace, checked with the viewer's token (SelfSubjectAccessReview, cached 60 s). No new ClusterRole.
+  - Every selector must name the namespace, or a service `profiles.legacyServices` lists for it (profiles from before the `namespace` label).
+  - Requests are rebuilt from typed structs with limits on window, `maxNodes` and points. Errors are Connect-shaped `{code, message}`.
+  - Rules, limits and errors: [the federator README](trace-federator/README.md#profiles).
+  - Tested against a fake Pyroscope and, read-only, against production Pyroscope 2.4.4 through a port-forward.
+- `royal-road/deploy/tracing`: `20-config.yaml` gains the `profiles` block (`legacyServices: royal-road: [royalroad.website]`); the README covers the Pyroscope NetworkPolicy entry the federator needs, access and rollback.
+
 ## Cmd+K search palette
 
 - Core patch: Cmd+K on macOS, or Ctrl+K elsewhere, opens a search dialog at the top of any console page. A search button at the right end of the masthead toolbar, after the user menu, opens the same dialog. The button stays visible when the masthead stacks below 768px. The dialog finds sidebar pages from every perspective, resource types from API discovery, and namespaces, which it calls projects when the Project API exists. Enter or a click opens the result, and a page from another perspective switches to that perspective. Typing a kind or a short name, such as `pod` or `svc`, lists that resource first: the group with the best match comes first, and groups with equal matches keep the order pages, resource types, namespaces. A resource type with a sidebar page in the active perspective appears only as that page, and a type whose sidebar section is hidden by a feature flag still appears as a resource type. Arrow keys move through the results, and Escape closes the dialog.

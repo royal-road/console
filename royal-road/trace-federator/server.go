@@ -23,6 +23,8 @@ import (
 //     /api/v2/search/tag/{tag}/values, /api/search/tag/{tag}/values,
 //     /api/echo. Responses carry X-Federation-Status (JSON list of
 //     {store, status, message}) so the UI can say which stores are missing.
+//  3. Profiles from Pyroscope, scoped per namespace (profiles.go):
+//     GET /profiles/{namespace}/scopes, POST /profiles/{namespace}/{method}.
 
 type server struct {
 	fed *federator
@@ -38,6 +40,8 @@ func (s *server) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/list-tempo-resources", s.listInstances)
 	mux.HandleFunc("GET /proxy/{namespace}/{view}/{tenant}/{rest...}", s.tempoAPI)
+	mux.HandleFunc("GET /profiles/{namespace}/scopes", s.profileScopes)
+	mux.HandleFunc("POST /profiles/{namespace}/{method}", s.profileQuery)
 	return mux
 }
 
@@ -81,6 +85,12 @@ func endpointLabel(p string) string {
 		return "metrics"
 	case p == "/api/v1/list-tempo-resources":
 		return "list-instances"
+	case strings.HasPrefix(p, "/profiles/"):
+		last := p[strings.LastIndex(p, "/")+1:]
+		if _, ok := profileMethods[last]; ok || last == "scopes" {
+			return "profiles-" + last
+		}
+		return "profiles-other"
 	case strings.Contains(p, "/api/search/tag/") || strings.Contains(p, "/api/v2/search/tag/"):
 		return "tag-values"
 	case strings.HasSuffix(p, "/search/tags"):
