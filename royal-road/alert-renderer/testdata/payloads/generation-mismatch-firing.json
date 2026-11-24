@@ -1,0 +1,53 @@
+{
+ "receiver": "discord_webhook",
+ "status": "firing",
+ "alerts": [
+  {
+   "status": "firing",
+   "labels": {
+    "alertgroup": "kubernetes-apps",
+    "alertname": "KubeDeploymentGenerationMismatch",
+    "namespace": "kube-system",
+    "deployment": "coredns",
+    "job": "kube-state-metrics",
+    "instance": "192.0.2.10:8080",
+    "endpoint": "http",
+    "container": "kube-state-metrics",
+    "prometheus": "openshift-monitoring/k8s",
+    "severity": "warning",
+    "pod": "kube-state-metrics-7ff79468d-5tc7q",
+    "service": "kube-state-metrics"
+   },
+   "annotations": {
+    "description": "Deployment generation for kube-system/coredns does not match, this indicates that the Deployment has failed but has not been rolled back.",
+    "summary": "Deployment generation mismatch due to possible roll-back"
+   },
+   "startsAt": "2026-11-24T09:40:00Z",
+   "endsAt": "0001-01-01T00:00:00Z",
+   "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=4802619583835268201&alert_id=1",
+   "fingerprint": "d00d0001"
+  }
+ ],
+ "groupLabels": {
+  "alertname": "KubeDeploymentGenerationMismatch"
+ },
+ "commonLabels": {
+  "alertgroup": "kubernetes-apps",
+  "alertname": "KubeDeploymentGenerationMismatch",
+  "namespace": "kube-system",
+  "deployment": "coredns",
+  "job": "kube-state-metrics",
+  "instance": "192.0.2.10:8080",
+  "endpoint": "http",
+  "container": "kube-state-metrics",
+  "prometheus": "openshift-monitoring/k8s",
+  "severity": "warning",
+  "pod": "kube-state-metrics-7ff79468d-5tc7q",
+  "service": "kube-state-metrics"
+ },
+ "commonAnnotations": {},
+ "externalURL": "http://vmalertmanager:9093",
+ "version": "4",
+ "groupKey": "{}/{severity=~\"info|warning|critical\"}:{\"alertname\": \"KubeDeploymentGenerationMismatch\"}",
+ "truncatedAlerts": 0
+}

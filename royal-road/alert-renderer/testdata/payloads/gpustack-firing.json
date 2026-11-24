@@ -1,0 +1,41 @@
+{
+  "receiver": "discord_webhook",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertgroup": "gpustack-serving",
+        "alertname": "GPUStackModelUnderReplicated",
+        "cluster_name": "Default",
+        "model_id": "55",
+        "model_name": "qwen38-sglang-tp2-stable1",
+        "service": "gpustack",
+        "severity": "critical"
+      },
+      "annotations": {
+        "description": "qwen38-sglang-tp2-stable1 has 0 running instance(s), fewer than desired, for 15 minutes. Check GPUStackWorkerNotReady first, then the instance state_message and serve logs (/var/lib/docker/volumes/gpustack-data/_data/log/serve on the worker).",
+        "summary": "GPUStack model qwen38-sglang-tp2-stable1 is under-replicated (0 running)"
+      },
+      "startsAt": "2026-11-24T01:29:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://vmalert-pod:8080/vmalert/alert?group_id=3330991254042310896&alert_id=8932090162394429460",
+      "fingerprint": "6a1f7c0e2b9d4c11"
+    }
+  ],
+  "groupLabels": {"alertname": "GPUStackModelUnderReplicated"},
+  "commonLabels": {
+    "alertgroup": "gpustack-serving",
+    "alertname": "GPUStackModelUnderReplicated",
+    "cluster_name": "Default",
+    "model_id": "55",
+    "model_name": "qwen38-sglang-tp2-stable1",
+    "service": "gpustack",
+    "severity": "critical"
+  },
+  "commonAnnotations": {},
+  "externalURL": "http://vmalertmanager:9093",
+  "version": "4",
+  "groupKey": "{}/{severity=~\"info|warning|critical\"}:{alertname=\"GPUStackModelUnderReplicated\"}",
+  "truncatedAlerts": 0
+}
