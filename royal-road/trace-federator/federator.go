@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -166,7 +169,7 @@ func (f *federator) search(ctx context.Context, v *viewer, view []*store, req Se
 			if s.cfg.Type != "tempo" && r.ParseErr != nil {
 				return r.ParseErr
 			}
-			res, err := s.Search(ctx, &r)
+			res, err := searchSliced(ctx, s, r)
 			if err != nil {
 				return err
 			}
@@ -187,6 +190,65 @@ func (f *federator) search(ctx context.Context, v *viewer, view []*store, req Se
 	return mergeSearch(names, ordered, req.Limit), statuses, nil
 }
 
+// maxSlices caps the search's slices parameter.
+const maxSlices = 24
+
+// sliceWindows splits [start, end] into n equal windows, oldest first, on
+// whole seconds (Tempo's start and end are Unix seconds). It returns nil
+// when there is nothing to split.
+func sliceWindows(start, end time.Time, n int) [][2]time.Time {
+	secs := end.Unix() - start.Unix()
+	n = int(min(int64(n), secs))
+	if n <= 1 {
+		return nil
+	}
+	out := make([][2]time.Time, n)
+	for i := range n {
+		out[i] = [2]time.Time{
+			time.Unix(start.Unix()+secs*int64(i)/int64(n), 0),
+			time.Unix(start.Unix()+secs*int64(i+1)/int64(n), 0),
+		}
+	}
+	return out
+}
+
+// searchSliced runs one store's search. With req.Slices > 1 and a bounded
+// time range, it searches each of req.Slices equal windows in parallel with
+// limit ceil(Limit/Slices), so the samples spread over the range instead of
+// all coming from its most recent minutes. Window results are concatenated;
+// mergeSearch de-duplicates them.
+func searchSliced(ctx context.Context, s *store, req SearchRequest) ([]TraceSummary, error) {
+	windows := sliceWindows(req.Start, req.End, req.Slices)
+	if req.Start.IsZero() || req.End.IsZero() || windows == nil {
+		return s.Search(ctx, &req)
+	}
+	perWindow := (req.Limit + len(windows) - 1) / len(windows)
+	results := make([][]TraceSummary, len(windows))
+	errs := make([]error, len(windows))
+	var wg sync.WaitGroup
+	for i, w := range windows {
+		r := req
+		r.Start, r.End, r.Limit = w[0], w[1], perWindow
+		r.Params = map[string]string{}
+		maps.Copy(r.Params, req.Params)
+		r.Params["start"] = strconv.FormatInt(w[0].Unix(), 10)
+		r.Params["end"] = strconv.FormatInt(w[1].Unix(), 10)
+		r.Params["limit"] = strconv.Itoa(perWindow)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = s.Search(ctx, &r)
+		}()
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err // a store missing some windows would skew the spread
+		}
+	}
+	return slices.Concat(results...), nil
+}
+
 // mergeSearch unions per-store results (stores in priority order) by trace
 // ID: earliest start, longest duration, the first real root name, union of
 // span sets and service stats. Newest first, cut to limit.
@@ -205,7 +267,9 @@ func mergeSearch(stores []string, results [][]TraceSummary, limit int) []TraceSu
 				order = append(order, id)
 				continue
 			}
-			prev.Stores = append(prev.Stores, stores[i])
+			if !slices.Contains(prev.Stores, stores[i]) { // a sliced search can repeat a trace
+				prev.Stores = append(prev.Stores, stores[i])
+			}
 			if ts := t.startNanos(); ts != 0 && (prev.startNanos() == 0 || ts < prev.startNanos()) {
 				prev.StartTimeUnixNano = t.StartTimeUnixNano
 			}

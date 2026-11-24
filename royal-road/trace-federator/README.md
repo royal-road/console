@@ -26,7 +26,7 @@ No open-source component federates trace queries. Grafana's `federation-frontend
 | Path | Purpose |
 |---|---|
 | `GET /api/v1/list-tempo-resources` | The plugin's instance discovery. Returns one "instance" (view) per store the viewer may read, plus `all-stores` first. |
-| `GET /proxy/{namespace}/{view}/{tenant}/api/search` | TraceQL search (`q`, `start`, `end`, `limit`) |
+| `GET /proxy/{namespace}/{view}/{tenant}/api/search` | TraceQL search (`q`, `start`, `end`, `limit`, `slices`) |
 | `…/api/v2/traces/{id}`, `…/api/traces/{id}` | Trace by ID: OTLP JSON (v2) or `batches` (v1) |
 | `…/api/v2/search/tags`, `…/api/search/tags` | Tag names |
 | `…/api/v2/search/tag/{tag}/values`, `…/api/search/tag/{tag}/values` | Tag values |
@@ -43,6 +43,14 @@ The `namespace` and `tenant` path segments are ignored; they exist because the p
 - the union of span sets.
 
 The merged list is sorted newest first and cut to `limit`. Every row lists its `federationStores`. The order is "most recent N per store, merged", which is exact unless a store returns rows out of order.
+
+Stores return the most recent matches, so a search over a busy hour gets traces from its last minutes only. **`slices=N`** (1 to 24, larger values are capped) spreads the samples over the range:
+- `[start, end]` is split into N equal windows on whole seconds, never more windows than seconds.
+- Each store searches every window in parallel, with limit `ceil(limit/N)`, within its usual `searchTimeout`. Any window failing fails that store.
+- The results are merged as above, de-duplicated by trace ID, sorted newest first and cut to `limit`. When `N` does not divide `limit`, the cut drops a few traces from the oldest window.
+- Without `slices`, with `slices=1`, or without both `start` and `end`, the search is one query per store. `slices` is never sent to the stores.
+
+Observe's trace scatter sends `slices=12`.
 
 **Trace by ID** asks every store and concatenates the spans:
 - Each resource gets the attribute **`federation.store=<store>`**, which the span details panel shows.
