@@ -262,7 +262,7 @@ const ConnectedTopologyListView: FC<
 
       const onKeyDown = (e: KeyboardEvent) => {
         const { nodeName } = e.target as Element;
-        if (nodeName === 'INPUT' || nodeName === 'TEXTAREA') {
+        if (nodeName === 'INPUT' || nodeName === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) {
           return;
         }
 
