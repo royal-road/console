@@ -2,6 +2,8 @@
 
 A small Go service that serves the **Tempo HTTP API over several trace stores** and the **backend API of the distributed-tracing console plugin** (Observe › Traces). The console then searches and opens traces across every store at once, or one store at a time.
 
+It also serves **profiles from Pyroscope**, scoped per namespace, for observe-plugin's Profiles tab ([Profiles](#profiles)). The name stays trace-federator.
+
 Supported stores:
 
 | Type | Store | How it is read |
@@ -30,6 +32,8 @@ No open-source component federates trace queries. Grafana's `federation-frontend
 | `…/api/v2/traces/{id}`, `…/api/traces/{id}` | Trace by ID: OTLP JSON (v2) or `batches` (v1) |
 | `…/api/v2/search/tags`, `…/api/search/tags` | Tag names |
 | `…/api/v2/search/tag/{tag}/values`, `…/api/search/tag/{tag}/values` | Tag values |
+| `GET /profiles/{namespace}/scopes` | The base selectors a viewer may narrow in `{namespace}` ([Profiles](#profiles)) |
+| `POST /profiles/{namespace}/{method}` | Pyroscope query passthrough ([Profiles](#profiles)) |
 | `GET /metrics`, `GET /healthz` | Prometheus metrics; liveness |
 
 The `namespace` and `tenant` path segments are ignored; they exist because the plugin builds its URLs that way.
@@ -108,6 +112,49 @@ The bridge's plugin proxy (`authorize: true`) forwards the viewer's bearer token
 
 The federator's ServiceAccount only lists SentryProjectBindings, every `kubernetes.bindingsRefresh` (30 s).
 
+## Profiles
+
+`/profiles/*` passes six methods of Pyroscope's Connect API through to `POST <profiles.url>/querier.v1.QuerierService/{method}`: `SelectMergeStacktraces`, `SelectSeries`, `Diff`, `Series`, `LabelNames` and `LabelValues`. Other methods get 404, `ProfileTypes` included: it takes no selector and lists every service's types. The plugin reads a workload's types from `Series` with `labelNames: ["__profile_type__"]`.
+
+**Access.** The viewer needs `get` on `pods` in `{namespace}`, checked with a SelfSubjectAccessReview made with their token and cached like the others. There is no extra ClusterRole: whoever can see a namespace's pods can see its profiles.
+
+**Selectors** are the security boundary. Each `labelSelector`, each side of a `Diff`, and the one entry of `matchers` is parsed strictly (`{label op "string", …}`, ops `= != =~ !~`, double-quoted Go strings) and must have one of two shapes:
+
+| Shape | Condition | Forwarded as |
+|---|---|---|
+| Labelled | exactly one `namespace` matcher, `namespace="<ns>"` | re-serialised |
+| Legacy | no `namespace` matcher, exactly one `service_name` matcher, `service_name="<s>"` with `s` in `profiles.legacyServices[<ns>]` | re-serialised, with `namespace=~"\|<ns>"` appended |
+
+Anything else gets 400. Other matchers (`pod`, `k8s_deployment_name`, `env`) only narrow. The legacy shape covers profiles pushed before the services carried `namespace` and `k8s_deployment_name` labels: `namespace=~"|<ns>"` matches a profile without the label or with that namespace, never one labelled with another namespace. `legacyServices` is a trust statement: it says unlabelled profiles of that service come from that namespace. Remove an entry once the service has carried the labels for Pyroscope's retention.
+
+**Requests** are rebuilt from an allowlist of fields per method; any other field gets 400, so a field Pyroscope adds later cannot bypass these checks. Field names are matched exactly.
+
+| Method | Fields | Checks |
+|---|---|---|
+| `SelectMergeStacktraces` | `profileTypeID`, `labelSelector`, `start`, `end`, `maxNodes`, `stackTraceSelector` | `maxNodes` missing or 0 becomes 8192 (Pyroscope's default); larger than `profiles.maxNodes` is clamped. `stackTraceSelector` may hold `callSite: [{name}]` only. |
+| `SelectSeries` | `profileTypeID`, `labelSelector`, `start`, `end`, `step`, `groupBy`, `aggregation`, `limit` | `step` ≥ 1 s, at most 2000 points. `stackTraceSelector` gets 400: Pyroscope ignores it here, so the selected-function timeline uses `SelectMergeStacktraces` with `callSite` and `maxNodes: 1` per bucket. |
+| `Diff` | `left`, `right` | Each side as `SelectMergeStacktraces` |
+| `Series` | `matchers` (exactly one), `labelNames`, `start`, `end` | Pyroscope returns nothing for several matchers |
+| `LabelNames` | `matchers` (one), `start`, `end` | |
+| `LabelValues` | `name`, `matchers` (one), `start`, `end` | |
+
+`start` and `end` (Unix ms, numbers or strings) are required, and `end - start` must be at most `profiles.maxWindow` (24 h) for every method: Pyroscope's `max_query_length` is 1 day, for the metadata methods too. Bodies are at most 64 KiB (413) and `application/json` (415).
+
+**Responses** are Pyroscope's JSON, streamed, with `Cache-Control: no-store`, and gzip when the request accepts it (a 1 h flame graph at 16k nodes: 0.89 MB, 0.13 MB gzipped). int64 fields are JSON strings. Errors are Connect-shaped, `{"code", "message"}`:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `invalid_argument` | A rule above, or Pyroscope's own 4xx (passed through) |
+| 401 | `unauthenticated` | No token, or the API server rejected it |
+| 403 | `permission_denied` | No `get pods` in the namespace |
+| 404 | `not_found` | Unknown method, or no `profiles` block configured |
+| 413 | `resource_exhausted` | Body over 64 KiB |
+| 415 | `invalid_argument` | Not `application/json` |
+| 502 | `unavailable` | Pyroscope unreachable or 5xx, or the access review failed |
+| 504 | `deadline_exceeded` | Over `profiles.timeout` |
+
+Profile data is not cached. The viewer's token never reaches Pyroscope.
+
 ## Configuration
 
 JSON (a ConfigMap), passed with `-config` (default `/etc/trace-federator/config.json`). See `../deploy/tracing/20-config.yaml`. Durations accept Go syntax plus `Nd` for days.
@@ -129,6 +176,9 @@ JSON (a ConfigMap), passed with `-config` (default `/etc/trace-federator/config.
 | `apiKeyFile` | `signoz`: API key. |
 | `tokenFile`, `organization`, `publicURL` | `sentry`: credentials, organization, and the base URL for links. |
 | `spanNameField`, `attributeAllowlist`, `unsupportedAttributes` | `sentry`: the field TraceQL `name` maps to (default `span.name`); the attributes returned; and the TraceQL attributes Sentry never has, which are reported as `unsupported` instead of matching nothing. |
+| `profiles.url` | Pyroscope's base URL. Without a `profiles` block every `/profiles/*` path answers 404. |
+| `profiles.timeout`, `maxWindow`, `maxNodes` | Upstream timeout (20 s), the longest window (24 h, Pyroscope's `max_query_length`), the `maxNodes` ceiling (16384). |
+| `profiles.legacyServices` | Namespace → `service_name` values allowed in the legacy selector shape. |
 
 ## Store notes
 
@@ -159,11 +209,13 @@ JSON (a ConfigMap), passed with `-config` (default `/etc/trace-federator/config.
 | Metric | Labels |
 |---|---|
 | `tracefed_requests_total` | `endpoint`, `code` |
-| `tracefed_backend_requests_total` | `store`, `outcome` |
+| `tracefed_backend_requests_total` | `store`, `outcome` (Pyroscope calls use store `pyroscope`) |
 | `tracefed_backend_duration_seconds` | `store` |
 | `tracefed_partial_responses_total` | `endpoint` |
 | `tracefed_deduplicated_spans_total` | `store` |
 | `tracefed_access_reviews_total` | `allowed` |
+
+Profiles requests use the endpoint labels `profiles-scopes` and `profiles-<method>` (`profiles-other` for unknown methods). Rejected selectors are also logged with the namespace and method.
 
 ## Development
 

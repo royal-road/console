@@ -36,6 +36,8 @@ type federator struct {
 	authz  *authorizer
 	views  map[string][]*store
 	order  []string
+	// profiles is nil unless the configuration has a profiles block.
+	profiles *profilesProxy
 }
 
 // viewer is the person behind a request: their bearer token, as forwarded by

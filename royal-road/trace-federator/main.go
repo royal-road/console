@@ -96,6 +96,9 @@ func newFederator(cfg *Config, kube *kubeClient) (*federator, error) {
 		views: map[string][]*store{cfg.AllView: stores},
 		order: []string{cfg.AllView},
 	}
+	if cfg.Profiles != nil {
+		f.profiles = &profilesProxy{cfg: cfg.Profiles, client: client}
+	}
 	for _, s := range stores {
 		f.views[s.cfg.Name] = []*store{s}
 		f.order = append(f.order, s.cfg.Name)
