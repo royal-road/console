@@ -9,7 +9,17 @@ jest.mock('@console/plugin-sdk/src/api/useExtensions', () => ({
 
 jest.mock('@console/internal/components/factory/ListPage/ListPageHeader', () => ({
   __esModule: true,
-  default: ({ title }) => <h1>{title}</h1>,
+  default: ({ title, children }) => (
+    <>
+      <h1>{title}</h1>
+      {children}
+    </>
+  ),
+}));
+
+jest.mock('../NodeGroupEditButton', () => ({
+  __esModule: true,
+  default: () => <button type="button">Edit node groups</button>,
 }));
 
 const useExtensionsMock = useExtensions as jest.Mock;
@@ -25,32 +35,24 @@ const navTab = (contextId: string, name: string, href: string) => ({
   },
 });
 
-const renderNodesTab = jest.fn((tabBar) => (
-  <>
-    {tabBar}
-    <div>built-in node list</div>
-  </>
-));
-
 const renderAt = (url: string) =>
   render(
     <MemoryRouter initialEntries={[url]}>
-      <NodesListTabs renderNodesTab={renderNodesTab} />
+      <NodesListTabs>
+        <div>built-in node list</div>
+      </NodesListTabs>
     </MemoryRouter>,
   );
 
 describe('NodesListTabs', () => {
-  beforeEach(() => {
-    renderNodesTab.mockClear();
-  });
-
   it('renders the node list without a tab bar when no nodes-list tabs exist', () => {
     useExtensionsMock.mockReturnValue([navTab('dev-console-observe', 'Other', 'other')]);
     renderAt('/k8s/cluster/nodes?tab=other');
 
     expect(screen.getByText('built-in node list')).toBeVisible();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-    expect(renderNodesTab).toHaveBeenCalledWith();
+    expect(screen.getByRole('heading', { name: 'Nodes' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Edit node groups' })).toBeVisible();
   });
 
   it('renders the plugin tab named by the tab query parameter instead of the node list', async () => {
@@ -61,8 +63,8 @@ describe('NodesListTabs', () => {
 
     expect(await screen.findByText('External nodes content')).toBeVisible();
     expect(screen.queryByText('built-in node list')).not.toBeInTheDocument();
-    expect(renderNodesTab).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'Nodes' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Edit node groups' })).toBeVisible();
     expect(screen.getByRole('tab', { name: 'External nodes' })).toHaveAttribute(
       'href',
       '/k8s/cluster/nodes?tab=external',
