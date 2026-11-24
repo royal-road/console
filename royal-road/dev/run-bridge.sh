@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Run the bridge off-cluster against a kind cluster made by kind-up.sh, with
-# auth disabled and a cluster-admin ServiceAccount token.
+# Run the bridge off-cluster against a cluster made by kind-up.sh or
+# container-cluster-up.sh, with auth disabled and a cluster-admin
+# ServiceAccount token.
 #
 # Usage: royal-road/dev/run-bridge.sh [name] [extra bridge flags...]
 #
 # Environment:
-#   KIND_KUBECONFIG  kubeconfig (default /tmp/kind-<name>.kubeconfig)
+#   DEV_CLUSTER      kind (default) or container-cluster, whichever made the cluster
+#   KIND_KUBECONFIG  kubeconfig for kind (default /tmp/kind-<name>.kubeconfig)
+#   CONTAINER_CLUSTER_KUBECONFIG
+#                    kubeconfig for container-cluster
+#                    (default /tmp/container-cluster-<name>.kubeconfig)
 #   BRIDGE_BIN       bridge binary (default ./bin/bridge; build with ./build-backend.sh)
 #   PUBLIC_DIR       frontend build (default ./frontend/public/dist). To skip a
 #                    frontend build, copy it out of an image:
@@ -17,7 +22,16 @@ set -euo pipefail
 
 NAME=${1:-rr-console}
 shift || true
-export KUBECONFIG=${KIND_KUBECONFIG:-/tmp/kind-${NAME}.kubeconfig}
+case ${DEV_CLUSTER:-kind} in
+  kind) export KUBECONFIG=${KIND_KUBECONFIG:-/tmp/kind-${NAME}.kubeconfig} ;;
+  container-cluster)
+    export KUBECONFIG=${CONTAINER_CLUSTER_KUBECONFIG:-/tmp/container-cluster-${NAME}.kubeconfig}
+    ;;
+  *)
+    echo "DEV_CLUSTER must be kind or container-cluster, not '$DEV_CLUSTER'" >&2
+    exit 2
+    ;;
+esac
 
 BRIDGE_BIN=${BRIDGE_BIN:-./bin/bridge}
 PUBLIC_DIR=${PUBLIC_DIR:-./frontend/public/dist}
@@ -36,11 +50,6 @@ mkdir -p "$scratch"
 printf '%s' "$BRIDGE_K8S_AUTH_BEARER_TOKEN" >"$scratch/sa-token"
 chmod 600 "$scratch/sa-token"
 export BRIDGE_K8S_MODE_OFF_CLUSTER_SERVICE_ACCOUNT_BEARER_TOKEN_FILE=$scratch/sa-token
-# The user-settings client ignores SKIP_VERIFY_TLS off-cluster, so trust the
-# kind API server's CA instead.
-kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' |
-  base64 -d >"$scratch/api-ca.crt"
-export SSL_CERT_FILE=$scratch/api-ca.crt
 export BRIDGE_LISTEN=${LISTEN:-http://localhost:9000}
 export BRIDGE_PUBLIC_DIR=$PUBLIC_DIR
 # The Helm backend reads Helm's client config; keep the host user's
