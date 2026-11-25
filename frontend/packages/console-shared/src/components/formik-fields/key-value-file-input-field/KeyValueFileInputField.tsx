@@ -34,6 +34,8 @@ type KeyValueEntryFormProps = {
   disableRemoveAction?: boolean;
   entries: KeyValueEntry[];
   onChange?: (value: string, keyIndex: string) => void;
+  /** Edit values in a code editor that detects the language from each key and content. */
+  codeEditor?: boolean;
 };
 
 const KeyValueFileInputField: FC<KeyValueEntryFormProps & FieldProps> = ({
@@ -43,6 +45,7 @@ const KeyValueFileInputField: FC<KeyValueEntryFormProps & FieldProps> = ({
   disableRemoveAction = false,
   entries = [{ key: '', value: '' }],
   onChange,
+  codeEditor = false,
 }) => {
   const [field] = useField<KeyValueEntry[]>(name);
   const { t } = useTranslation('console-shared');
@@ -98,6 +101,7 @@ const KeyValueFileInputField: FC<KeyValueEntryFormProps & FieldProps> = ({
                   name={`${name}.${idx.toString()}.value`}
                   label={t('Value')}
                   helpText={t('Drag and drop file with your value here or browse to upload it.')}
+                  codeEditor={codeEditor ? { fileName: v.key } : undefined}
                   onChange={(fileData: string) => {
                     onChange && onChange(fileData, `${name}.${idx.toString()}`);
                   }}

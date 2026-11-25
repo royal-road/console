@@ -6,11 +6,7 @@ import type { SimpleSelectOption } from '@patternfly/react-templates';
 import { SimpleSelect } from '@patternfly/react-templates';
 import { useTranslation } from 'react-i18next';
 import { BasicCodeEditor } from '@console/shared/src/components/editor/BasicCodeEditor';
-import {
-  detectSecretValueLanguage,
-  SECRET_VALUE_LANGUAGES,
-  SecretValueLanguage,
-} from './secret-value-language';
+import { detectValueLanguage, VALUE_LANGUAGES, ValueLanguage } from './value-language';
 
 const AUTO_DETECT = 'auto';
 
@@ -18,44 +14,41 @@ const AUTO_DETECT = 'auto';
 const MIN_HEIGHT = 76;
 const MAX_HEIGHT = 570;
 
-type SecretValueEditorProps = {
-  /** The secret key, used to detect the language from its file extension. */
-  secretKey: string;
+type ValueCodeEditorProps = {
+  /** Name of the entry (usually its key), used to detect the language from a file extension. */
+  fileName: string;
   value: string;
   onChange: (value: string) => void;
   isReadOnly?: boolean;
   label: string;
 };
 
-const SecretValueEditor: FC<SecretValueEditorProps> = ({
-  secretKey,
+const ValueCodeEditor: FC<ValueCodeEditorProps> = ({
+  fileName,
   value,
   onChange,
   isReadOnly,
   label,
 }) => {
-  const { t } = useTranslation('public');
-  const [selection, setSelection] = useState<SecretValueLanguage | typeof AUTO_DETECT>(AUTO_DETECT);
+  const { t } = useTranslation('console-shared');
+  const [selection, setSelection] = useState<ValueLanguage | typeof AUTO_DETECT>(AUTO_DETECT);
   const [formatError, setFormatError] = useState('');
   const [height, setHeight] = useState(MIN_HEIGHT);
   const editorRef = useRef<Parameters<EditorDidMount>[0]>();
 
-  const detectedLanguage = useMemo(
-    () => detectSecretValueLanguage(secretKey, value),
-    [secretKey, value],
-  );
+  const detectedLanguage = useMemo(() => detectValueLanguage(fileName, value), [fileName, value]);
   const language = selection === AUTO_DETECT ? detectedLanguage : selection;
-  const { monacoLanguage, format: formatter } = SECRET_VALUE_LANGUAGES[language];
+  const { monacoLanguage, format: formatter } = VALUE_LANGUAGES[language];
 
-  const languageLabels: Record<SecretValueLanguage, string> = {
-    [SecretValueLanguage.json]: t('JSON'),
-    [SecretValueLanguage.yaml]: t('YAML'),
-    [SecretValueLanguage.xml]: t('XML'),
-    [SecretValueLanguage.ini]: t('INI'),
-    [SecretValueLanguage.toml]: t('TOML'),
-    [SecretValueLanguage.properties]: t('Properties / .env'),
-    [SecretValueLanguage.shell]: t('Shell script'),
-    [SecretValueLanguage.plaintext]: t('Plain text'),
+  const languageLabels: Record<ValueLanguage, string> = {
+    [ValueLanguage.json]: t('JSON'),
+    [ValueLanguage.yaml]: t('YAML'),
+    [ValueLanguage.xml]: t('XML'),
+    [ValueLanguage.ini]: t('INI'),
+    [ValueLanguage.toml]: t('TOML'),
+    [ValueLanguage.properties]: t('Properties / .env'),
+    [ValueLanguage.shell]: t('Shell script'),
+    [ValueLanguage.plaintext]: t('Plain text'),
   };
 
   const languageOptions: SimpleSelectOption[] = [
@@ -64,7 +57,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
       content: t('Auto-detect ({{language}})', { language: languageLabels[detectedLanguage] }),
       selected: selection === AUTO_DETECT,
     },
-    ...Object.values(SecretValueLanguage).map((lang) => ({
+    ...Object.values(ValueLanguage).map((lang) => ({
       value: lang,
       content: languageLabels[lang],
       selected: selection === lang,
@@ -84,7 +77,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
       if (formatted !== current && model.getValue() === current) {
         // executeEdits keeps the change on the undo stack, unlike setValue.
         editor.pushUndoStop();
-        editor.executeEdits('format-secret-value', [
+        editor.executeEdits('format-value', [
           { range: model.getFullModelRange(), text: formatted },
         ]);
         editor.pushUndoStop();
@@ -110,7 +103,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
     fitContent();
     // Overrides Monaco's Format Document shortcut so it also covers XML and INI.
     editor.addAction({
-      id: 'console.secret-value.format',
+      id: 'console.value-editor.format',
       label: t('Format value'),
       // eslint-disable-next-line no-bitwise
       keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
@@ -125,7 +118,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
 
   return (
     // Grows to fill the file upload row the way PatternFly sizes the default textarea.
-    <div className="pf-v6-u-flex-1" style={{ minWidth: 0 }} data-test="secret-value-editor">
+    <div className="pf-v6-u-flex-1" style={{ minWidth: 0 }} data-test="value-code-editor">
       <BasicCodeEditor
         code={value}
         onChange={handleChange}
@@ -139,7 +132,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
           scrollBeyondLastLine: false,
           tabSize: 2,
           wordWrap: 'on',
-          // Keep completions from offering words found in other secret values on the page.
+          // Keep completions from offering words found in other values on the page, such as secrets.
           wordBasedSuggestions: 'currentDocument',
         }}
         customControls={
@@ -147,18 +140,18 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
             <SimpleSelect
               initialOptions={languageOptions}
               onSelect={(_e, selected) =>
-                setSelection(selected as SecretValueLanguage | typeof AUTO_DETECT)
+                setSelection(selected as ValueLanguage | typeof AUTO_DETECT)
               }
               toggleProps={{ 'aria-label': t('Value language'), size: 'sm' }}
               toggleWidth="14em"
-              data-test="secret-value-language"
+              data-test="value-code-editor-language"
             />
             <Button
               variant="link"
               size="sm"
               onClick={format}
               isDisabled={isReadOnly || !formatter}
-              data-test="secret-value-format"
+              data-test="value-code-editor-format"
             >
               {t('Format')}
             </Button>
@@ -167,7 +160,7 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
       />
       {formatError && (
         <HelperText>
-          <HelperTextItem variant="error" data-test="secret-value-format-error">
+          <HelperTextItem variant="error" data-test="value-code-editor-format-error">
             {formatError}
           </HelperTextItem>
         </HelperText>
@@ -176,4 +169,4 @@ const SecretValueEditor: FC<SecretValueEditorProps> = ({
   );
 };
 
-export default SecretValueEditor;
+export default ValueCodeEditor;

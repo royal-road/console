@@ -11,6 +11,7 @@ export const DroppableFileInputField: FC<DroppableFileInputFieldProps> = ({
   label,
   helpText,
   onChange,
+  codeEditor,
 }) => {
   const [field] = useField(name);
   const { setFieldValue } = useFormikContext<FormikValues>();
@@ -26,6 +27,7 @@ export const DroppableFileInputField: FC<DroppableFileInputFieldProps> = ({
         }}
         inputFileData={field.value}
         filenamePlaceholder={helpText}
+        codeEditor={codeEditor}
         aria-describedby={helpText ? `${fieldId}-helper` : undefined}
       />
     </FormGroup>

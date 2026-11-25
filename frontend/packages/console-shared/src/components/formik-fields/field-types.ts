@@ -7,6 +7,7 @@ import type {
 } from '@patternfly/react-core';
 import type { JSONSchema7 } from 'json-schema';
 import type { ConsoleSelectProps } from '@console/internal/components/utils/console-select';
+import type { DroppableFileInputProps } from '@console/internal/components/utils/file-input';
 import type { K8sKind, K8sResourceKind } from '@console/internal/module/k8s';
 import type { RowRendererProps } from './multi-column-field/MultiColumnFieldRow';
 
@@ -23,6 +24,7 @@ export interface FieldProps {
 
 export interface DroppableFileInputFieldProps extends FieldProps {
   onChange?: (fileData: string) => void;
+  codeEditor?: DroppableFileInputProps['codeEditor'];
   helpText?: string;
   label?: string;
 }
