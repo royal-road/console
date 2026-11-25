@@ -327,7 +327,7 @@ const config: Configuration = {
       chunksSortMode: 'auto',
     }),
     new MonacoWebpackPlugin({
-      languages: ['yaml', 'dockerfile', 'json', 'plaintext'],
+      languages: ['yaml', 'dockerfile', 'json', 'plaintext', 'xml', 'ini', 'shell'],
       globalAPI: true,
       customLanguages: [
         {

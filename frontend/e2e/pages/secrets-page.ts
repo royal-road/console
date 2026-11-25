@@ -12,6 +12,7 @@ export class SecretsPage extends BasePage {
   private readonly saveButton = this.page.getByTestId('save-changes');
   private readonly binaryAlert = this.page.getByTestId('file-input-binary-alert');
   private readonly fileInputTextarea = this.page.getByTestId('file-input-textarea');
+  private readonly secretValueEditor = this.page.getByTestId('secret-value-editor');
   private readonly addCredentialsButton = this.page.getByTestId('add-credentials-button');
   private readonly removeEntryButton = this.page.getByTestId('remove-entry-button');
   private readonly revealValuesButton = this.page.getByTestId('reveal-values');
@@ -61,7 +62,38 @@ export class SecretsPage extends BasePage {
   async addKeyValue(key: string, value: string): Promise<void> {
     await this.robustClick(this.addCredentialsButton);
     await this.secretKeyInput.last().fill(key);
-    await this.fileInputTextarea.last().fill(value);
+    await this.fillSecretValue(value);
+  }
+
+  /** Sets the value of a key/value secret entry's code editor (the last entry by default). */
+  async fillSecretValue(
+    value: string,
+    editor: Locator = this.secretValueEditor.last(),
+  ): Promise<void> {
+    const monacoEditor = editor.locator('.monaco-editor');
+    await expect(monacoEditor).toBeVisible({ timeout: 30_000 });
+    // Monaco can swap its model while mounting, so set and verify until the value sticks.
+    await expect(async () => {
+      await monacoEditor.evaluate((element, text) => {
+        (window as any).monaco.editor
+          .getEditors()
+          .find((instance) => instance.getContainerDomNode().contains(element))
+          .getModel()
+          .setValue(text);
+      }, value);
+      expect(await this.getSecretValue(editor)).toBe(value);
+    }).toPass({ timeout: 15_000, intervals: [300, 700, 1500] });
+  }
+
+  /** Reads the value of a key/value secret entry's code editor (the first entry by default). */
+  async getSecretValue(editor: Locator = this.secretValueEditor.first()): Promise<string> {
+    return editor.locator('.monaco-editor').evaluate((element) =>
+      (window as any).monaco.editor
+        .getEditors()
+        .find((instance) => instance.getContainerDomNode().contains(element))
+        .getModel()
+        .getValue(),
+    );
   }
 
   async waitForSecretDataReady(): Promise<void> {
@@ -94,6 +126,10 @@ export class SecretsPage extends BasePage {
 
   getFileInputTextarea(): Locator {
     return this.fileInputTextarea;
+  }
+
+  getSecretValueEditor(): Locator {
+    return this.secretValueEditor;
   }
 
   getSecretData(): Locator {

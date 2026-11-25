@@ -1,10 +1,20 @@
 import type { FC, FormEvent } from 'react';
-import { TextInput, Button, FormGroup, ActionGroup, FormFieldGroup } from '@patternfly/react-core';
+import { lazy, Suspense } from 'react';
+import {
+  TextInput,
+  Button,
+  FormGroup,
+  ActionGroup,
+  FormFieldGroup,
+  Spinner,
+} from '@patternfly/react-core';
 import { RhUiMinusCircleIcon } from '@patternfly/react-icons';
 import { Base64 } from 'js-base64';
 import { useTranslation } from 'react-i18next';
 import { DroppableFileInput } from './DropableFileInput';
 import type { OpaqueSecretFormEntryProps } from './types';
+
+const SecretValueEditor = lazy(() => import('./SecretValueEditor'));
 
 export const OpaqueSecretFormEntry: FC<OpaqueSecretFormEntryProps> = ({
   onChange,
@@ -66,6 +76,17 @@ export const OpaqueSecretFormEntry: FC<OpaqueSecretFormEntryProps> = ({
         id={`${entry.uid}-value`}
         label={t('Value')}
         filenamePlaceholder={t('Drag and drop file with your value here or browse to upload it.')}
+        renderTextEditor={({ value, onChange: onValueChange, isReadOnly }) => (
+          <Suspense fallback={<Spinner size="lg" />}>
+            <SecretValueEditor
+              secretKey={entry.key}
+              value={value}
+              onChange={onValueChange}
+              isReadOnly={isReadOnly}
+              label={t('Value')}
+            />
+          </Suspense>
+        )}
       />
     </FormFieldGroup>
   );

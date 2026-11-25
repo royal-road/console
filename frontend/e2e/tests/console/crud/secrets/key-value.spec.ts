@@ -55,7 +55,7 @@ test.describe('Create key/value secrets', () => {
       await secretsPage.enterSecretName(secretName);
       await secretsPage.fillSecretKey(SECRET_KEY);
       await secretsPage.uploadFile(fixturePath(BINARY_FILENAME));
-      await expect(secretsPage.getFileInputTextarea()).not.toBeAttached();
+      await expect(secretsPage.getSecretValueEditor()).not.toBeAttached();
       await expect(secretsPage.getBinaryAlert()).toBeVisible();
       await secretsPage.save();
     });
@@ -105,7 +105,7 @@ test.describe('Create key/value secrets', () => {
       await secretsPage.enterSecretName(secretName);
       await secretsPage.fillSecretKey(SECRET_KEY);
       await secretsPage.uploadFile(fixturePath(ASCII_FILENAME));
-      await expect(secretsPage.getFileInputTextarea()).toContainText(asciiContent);
+      await expect.poll(() => secretsPage.getSecretValue()).toContain(asciiContent);
       await expect(secretsPage.getBinaryAlert()).not.toBeAttached();
       await secretsPage.save();
     });
@@ -138,7 +138,7 @@ test.describe('Create key/value secrets', () => {
       await secretsPage.enterSecretName(secretName);
       await secretsPage.fillSecretKey(SECRET_KEY);
       await secretsPage.uploadFile(fixturePath(UNICODE_FILENAME));
-      await expect(secretsPage.getFileInputTextarea()).toContainText(unicodeContent);
+      await expect.poll(() => secretsPage.getSecretValue()).toContain(unicodeContent);
       await expect(secretsPage.getBinaryAlert()).not.toBeAttached();
       await secretsPage.save();
     });
@@ -202,7 +202,10 @@ test.describe('Create key/value secrets', () => {
       await secretsPage.navigateToSecretDetails(namespace, secretName);
       await detailsPage.waitForPageLoad();
       await detailsPage.clickActionsMenuAction('Edit Secret');
-      await secretsPage.getFileInputTextarea().first().fill(updatedTextValue);
+      await secretsPage.fillSecretValue(
+        updatedTextValue,
+        secretsPage.getSecretValueEditor().first(),
+      );
       await expect(secretsPage.getBinaryAlert()).toBeVisible();
       await secretsPage.save();
     });

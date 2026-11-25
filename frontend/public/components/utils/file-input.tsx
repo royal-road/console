@@ -41,6 +41,12 @@ export interface DroppableFileInputProps {
   isRequired?: boolean;
   /** Error message to display below the preview */
   errorMessage?: string;
+  /** Renders an editor in place of the default textarea for text (non-binary) content */
+  renderTextEditor?: (props: {
+    value: string;
+    onChange: (value: string) => void;
+    isReadOnly: boolean;
+  }) => ReactNode;
 }
 
 export const DroppableFileInput: FC<DroppableFileInputProps> = ({
@@ -53,6 +59,7 @@ export const DroppableFileInput: FC<DroppableFileInputProps> = ({
   textareaFieldHelpText,
   isRequired,
   errorMessage,
+  renderTextEditor,
 }) => {
   const [filename, setFilename] = useState<string>('');
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>('');
@@ -161,22 +168,30 @@ export const DroppableFileInput: FC<DroppableFileInputProps> = ({
 
         {!inputFileIsBinary && (
           <div className={styles.fileUploadFileDetails}>
-            <TextArea
-              data-test="file-input-textarea"
-              data-test-id="file-input-textarea"
-              className="co-file-dropzone__textarea"
-              readOnly={isLoading}
-              resizeOrientation="vertical"
-              onChange={(e) => {
-                const fileContent = e.target.value;
-                onChange(fileContent, false);
-              }}
-              value={inputFileData}
-              aria-label={t('{{label}}', { label })}
-              aria-describedby={textareaFieldHelpText ? `${id}-textarea-help` : undefined}
-              required={isRequired}
-              validated={hasError ? 'error' : 'default'}
-            />
+            {renderTextEditor ? (
+              renderTextEditor({
+                value: inputFileData,
+                onChange: (fileContent) => onChange(fileContent, false),
+                isReadOnly: isLoading,
+              })
+            ) : (
+              <TextArea
+                data-test="file-input-textarea"
+                data-test-id="file-input-textarea"
+                className="co-file-dropzone__textarea"
+                readOnly={isLoading}
+                resizeOrientation="vertical"
+                onChange={(e) => {
+                  const fileContent = e.target.value;
+                  onChange(fileContent, false);
+                }}
+                value={inputFileData}
+                aria-label={t('{{label}}', { label })}
+                aria-describedby={textareaFieldHelpText ? `${id}-textarea-help` : undefined}
+                required={isRequired}
+                validated={hasError ? 'error' : 'default'}
+              />
+            )}
             {isLoading && (
               <div className={styles.fileUploadFileDetailsSpinner}>
                 <Spinner size={spinnerSize.lg} />
