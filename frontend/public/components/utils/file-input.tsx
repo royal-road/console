@@ -1,5 +1,5 @@
 import type { FC, ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import type { FileUploadProps } from '@patternfly/react-core';
 import {
   Alert,
@@ -22,6 +22,16 @@ import { units } from './units';
 /** Maximal file size, in bytes, that user can upload */
 const MAX_UPLOAD_SIZE = 4000000;
 
+const ValueCodeEditor = lazy(
+  () => import('@console/shared/src/components/editor/value-editor/ValueCodeEditor'),
+);
+
+/**
+ * Monaco does not support mobile browsers, so phones and touch-first devices keep the textarea.
+ * Read once per mount so that resizing a desktop window does not swap editors mid-edit.
+ */
+const PLAIN_TEXT_EDITOR_QUERY = '(max-width: 767px), (hover: none) and (pointer: coarse)';
+
 export interface DroppableFileInputProps {
   /** The content of the input file, either as a UTF-8 string or a base64-encoded string if the file is binary */
   inputFileData: string;
@@ -41,12 +51,12 @@ export interface DroppableFileInputProps {
   isRequired?: boolean;
   /** Error message to display below the preview */
   errorMessage?: string;
-  /** Renders an editor in place of the default textarea for text (non-binary) content */
-  renderTextEditor?: (props: {
-    value: string;
-    onChange: (value: string) => void;
-    isReadOnly: boolean;
-  }) => ReactNode;
+  /**
+   * Edits text (non-binary) content in a code editor with language detection and formatting
+   * instead of the textarea, except on mobile and touch-first devices. `fileName` (usually the
+   * entry's key) guides language detection.
+   */
+  codeEditor?: { fileName: string };
 }
 
 export const DroppableFileInput: FC<DroppableFileInputProps> = ({
@@ -59,7 +69,7 @@ export const DroppableFileInput: FC<DroppableFileInputProps> = ({
   textareaFieldHelpText,
   isRequired,
   errorMessage,
-  renderTextEditor,
+  codeEditor,
 }) => {
   const [filename, setFilename] = useState<string>('');
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>('');
@@ -70,6 +80,9 @@ export const DroppableFileInput: FC<DroppableFileInputProps> = ({
     ),
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [useCodeEditor] = useState(
+    () => !!codeEditor && !window.matchMedia(PLAIN_TEXT_EDITOR_QUERY).matches,
+  );
 
   const hasError = !!errorMessage || !!uploadErrorMessage;
 
@@ -168,12 +181,16 @@ export const DroppableFileInput: FC<DroppableFileInputProps> = ({
 
         {!inputFileIsBinary && (
           <div className={styles.fileUploadFileDetails}>
-            {renderTextEditor ? (
-              renderTextEditor({
-                value: inputFileData,
-                onChange: (fileContent) => onChange(fileContent, false),
-                isReadOnly: isLoading,
-              })
+            {useCodeEditor ? (
+              <Suspense fallback={<Spinner size="lg" />}>
+                <ValueCodeEditor
+                  fileName={codeEditor.fileName}
+                  value={inputFileData}
+                  onChange={(fileContent) => onChange(fileContent, false)}
+                  isReadOnly={isLoading}
+                  label={label}
+                />
+              </Suspense>
             ) : (
               <TextArea
                 data-test="file-input-textarea"

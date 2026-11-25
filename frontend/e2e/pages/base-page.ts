@@ -36,6 +36,34 @@ export async function setEditorContent(page: Page, content: string): Promise<voi
   }).toPass({ timeout: 15_000, intervals: [300, 700, 1500] });
 }
 
+/** Reads the model of the Monaco editor rendered inside `editor`. */
+export async function getCodeEditorValue(editor: Locator): Promise<string> {
+  return editor.locator('.monaco-editor').evaluate((element) =>
+    (window as any).monaco.editor
+      .getEditors()
+      .find((instance) => instance.getContainerDomNode().contains(element))
+      .getModel()
+      .getValue(),
+  );
+}
+
+/** Sets the model of the Monaco editor rendered inside `editor`, retrying until it sticks. */
+export async function setCodeEditorValue(editor: Locator, value: string): Promise<void> {
+  const monacoEditor = editor.locator('.monaco-editor');
+  await expect(monacoEditor).toBeVisible({ timeout: 30_000 });
+  // Monaco can swap its model while mounting, so set and verify until the value sticks.
+  await expect(async () => {
+    await monacoEditor.evaluate((element, text) => {
+      (window as any).monaco.editor
+        .getEditors()
+        .find((instance) => instance.getContainerDomNode().contains(element))
+        .getModel()
+        .setValue(text);
+    }, value);
+    expect(await getCodeEditorValue(editor)).toBe(value);
+  }).toPass({ timeout: 15_000, intervals: [300, 700, 1500] });
+}
+
 export async function warmupSPA(page: Page): Promise<void> {
   // Session recovery on OAuth redirect is handled by the guarded `page` fixture
   // (e2e/fixtures/index.ts), which re-authenticates on any navigation — during

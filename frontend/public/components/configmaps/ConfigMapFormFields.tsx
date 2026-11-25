@@ -43,6 +43,7 @@ const ConfigMapFormFields: FC = () => {
         data-test="configmap-key-value-pair"
         entries={[{ key: '', value: '' }]}
         onChange={onChange}
+        codeEditor
       />
 
       <KeyValueFileInputField

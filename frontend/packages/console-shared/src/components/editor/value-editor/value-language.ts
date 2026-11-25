@@ -1,6 +1,6 @@
 import { safeLoad } from 'js-yaml';
 
-export enum SecretValueLanguage {
+export enum ValueLanguage {
   json = 'json',
   yaml = 'yaml',
   xml = 'xml',
@@ -96,35 +96,35 @@ type LanguageDefinition = {
   format?: Formatter;
 };
 
-export const SECRET_VALUE_LANGUAGES: Record<SecretValueLanguage, LanguageDefinition> = {
-  [SecretValueLanguage.json]: { monacoLanguage: 'json', format: keepFinalNewline(formatJSON) },
-  [SecretValueLanguage.yaml]: { monacoLanguage: 'yaml', format: keepFinalNewline(formatYAML) },
-  [SecretValueLanguage.xml]: { monacoLanguage: 'xml', format: keepFinalNewline(formatXML) },
-  [SecretValueLanguage.ini]: { monacoLanguage: 'ini', format: keepFinalNewline(formatINI) },
+export const VALUE_LANGUAGES: Record<ValueLanguage, LanguageDefinition> = {
+  [ValueLanguage.json]: { monacoLanguage: 'json', format: keepFinalNewline(formatJSON) },
+  [ValueLanguage.yaml]: { monacoLanguage: 'yaml', format: keepFinalNewline(formatYAML) },
+  [ValueLanguage.xml]: { monacoLanguage: 'xml', format: keepFinalNewline(formatXML) },
+  [ValueLanguage.ini]: { monacoLanguage: 'ini', format: keepFinalNewline(formatINI) },
   // Monaco has no TOML or properties grammar; the INI one covers sections, keys and comments.
-  [SecretValueLanguage.toml]: { monacoLanguage: 'ini' },
-  [SecretValueLanguage.properties]: { monacoLanguage: 'ini' },
-  [SecretValueLanguage.shell]: { monacoLanguage: 'shell' },
-  [SecretValueLanguage.plaintext]: { monacoLanguage: 'plaintext' },
+  [ValueLanguage.toml]: { monacoLanguage: 'ini' },
+  [ValueLanguage.properties]: { monacoLanguage: 'ini' },
+  [ValueLanguage.shell]: { monacoLanguage: 'shell' },
+  [ValueLanguage.plaintext]: { monacoLanguage: 'plaintext' },
 };
 
-const EXTENSION_LANGUAGES: Record<string, SecretValueLanguage> = {
-  json: SecretValueLanguage.json,
-  yaml: SecretValueLanguage.yaml,
-  yml: SecretValueLanguage.yaml,
-  xml: SecretValueLanguage.xml,
-  xsd: SecretValueLanguage.xml,
-  xsl: SecretValueLanguage.xml,
-  xslt: SecretValueLanguage.xml,
-  plist: SecretValueLanguage.xml,
-  svg: SecretValueLanguage.xml,
-  ini: SecretValueLanguage.ini,
-  cnf: SecretValueLanguage.ini,
-  toml: SecretValueLanguage.toml,
-  properties: SecretValueLanguage.properties,
-  env: SecretValueLanguage.properties,
-  sh: SecretValueLanguage.shell,
-  bash: SecretValueLanguage.shell,
+const EXTENSION_LANGUAGES: Record<string, ValueLanguage> = {
+  json: ValueLanguage.json,
+  yaml: ValueLanguage.yaml,
+  yml: ValueLanguage.yaml,
+  xml: ValueLanguage.xml,
+  xsd: ValueLanguage.xml,
+  xsl: ValueLanguage.xml,
+  xslt: ValueLanguage.xml,
+  plist: ValueLanguage.xml,
+  svg: ValueLanguage.xml,
+  ini: ValueLanguage.ini,
+  cnf: ValueLanguage.ini,
+  toml: ValueLanguage.toml,
+  properties: ValueLanguage.properties,
+  env: ValueLanguage.properties,
+  sh: ValueLanguage.shell,
+  bash: ValueLanguage.shell,
 };
 
 /** Content sniffing is skipped above this size to keep typing responsive. */
@@ -156,16 +156,16 @@ const parsesAsYAMLCollection = (text: string) => {
   }
 };
 
-const detectFromKey = (key: string): SecretValueLanguage | undefined =>
+const detectFromKey = (key: string): ValueLanguage | undefined =>
   key.includes('.') ? EXTENSION_LANGUAGES[key.split('.').pop().toLowerCase()] : undefined;
 
-const detectFromContent = (value: string): SecretValueLanguage => {
+const detectFromContent = (value: string): ValueLanguage => {
   const text = value.trim();
   if (!text || text.length > MAX_SNIFF_LENGTH || text.startsWith('-----BEGIN ')) {
-    return SecretValueLanguage.plaintext;
+    return ValueLanguage.plaintext;
   }
   if (text.startsWith('#!')) {
-    return SecretValueLanguage.shell;
+    return ValueLanguage.shell;
   }
 
   const lines = text
@@ -177,35 +177,35 @@ const detectFromContent = (value: string): SecretValueLanguage => {
   // or contain `=` or `:`, so a single line is only structured when it fully parses.
   if (lines.length <= 1) {
     if (/^[[{]/.test(text) && parsesAsJSON(text)) {
-      return SecretValueLanguage.json;
+      return ValueLanguage.json;
     }
-    return XML_DOCUMENT.test(text) ? SecretValueLanguage.xml : SecretValueLanguage.plaintext;
+    return XML_DOCUMENT.test(text) ? ValueLanguage.xml : ValueLanguage.plaintext;
   }
 
   if (text.startsWith('{')) {
-    return SecretValueLanguage.json;
+    return ValueLanguage.json;
   }
   if (text.startsWith('<')) {
-    return SecretValueLanguage.xml;
+    return ValueLanguage.xml;
   }
   if (TOML_ONLY_SYNTAX.test(text)) {
-    return SecretValueLanguage.toml;
+    return ValueLanguage.toml;
   }
   if (text.startsWith('[') && (parsesAsJSON(text) || !SECTION_HEADER.test(lines[0]))) {
-    return SecretValueLanguage.json;
+    return ValueLanguage.json;
   }
   if (lines.some((line) => SECTION_HEADER.test(line))) {
-    return SecretValueLanguage.ini;
+    return ValueLanguage.ini;
   }
   if (text.startsWith('---')) {
-    return SecretValueLanguage.yaml;
+    return ValueLanguage.yaml;
   }
   if (lines.every((line) => PROPERTY_LINE.test(line))) {
-    return SecretValueLanguage.properties;
+    return ValueLanguage.properties;
   }
-  return parsesAsYAMLCollection(text) ? SecretValueLanguage.yaml : SecretValueLanguage.plaintext;
+  return parsesAsYAMLCollection(text) ? ValueLanguage.yaml : ValueLanguage.plaintext;
 };
 
-/** Guesses the language of a secret value from the key's file extension, then its content. */
-export const detectSecretValueLanguage = (key: string, value: string): SecretValueLanguage =>
+/** Guesses the language of a value from the key's file extension, then its content. */
+export const detectValueLanguage = (key: string, value: string): ValueLanguage =>
   detectFromKey(key) ?? detectFromContent(value);

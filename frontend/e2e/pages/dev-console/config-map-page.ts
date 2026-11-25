@@ -1,7 +1,7 @@
 import type { Locator } from '@playwright/test';
 
 import { expect } from '../../fixtures';
-import BasePage from '../base-page';
+import BasePage, { setCodeEditorValue } from '../base-page';
 
 export class ConfigMapPage extends BasePage {
   private readonly nameInput = this.page.getByTestId('configmap-name');
@@ -22,8 +22,12 @@ export class ConfigMapPage extends BasePage {
     return this.page.getByTestId(`key-${index}`);
   }
 
-  getValueTextarea(index: number): Locator {
-    return this.page.getByRole('textbox', { name: 'Value', exact: true }).nth(index);
+  getValueEditor(index: number): Locator {
+    return this.page.getByTestId('value-code-editor').nth(index);
+  }
+
+  async fillValue(index: number, value: string): Promise<void> {
+    await setCodeEditorValue(this.getValueEditor(index), value);
   }
 
   async fillName(name: string): Promise<void> {
@@ -32,7 +36,7 @@ export class ConfigMapPage extends BasePage {
 
   async fillKeyValue(index: number, key: string, value: string): Promise<void> {
     await this.getKeyInput(index).fill(key);
-    await this.getValueTextarea(index).fill(value);
+    await this.fillValue(index, value);
   }
 
   async addKeyValue(): Promise<void> {

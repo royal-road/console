@@ -50,7 +50,7 @@ test.describe('ConfigMap form view', { tag: ['@dev-console', '@smoke'] }, () => 
       await configMapPage.addKeyValue();
       await expect(configMapPage.getKeyInput(1)).toBeVisible();
       await configMapPage.getKeyInput(1).fill('key-test1');
-      await configMapPage.getValueTextarea(1).fill('value-test1');
+      await configMapPage.fillValue(1, 'value-test1');
       await configMapPage.save();
     });
 
