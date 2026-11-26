@@ -5,7 +5,7 @@ Image for Lightspeed's Sentry tools: getsentry's
 speaks MCP over stdio only, behind
 [`supergateway`](https://www.npmjs.com/package/supergateway), which serves it
 over streamable HTTP at `:8080/mcp` for OLS. Both versions are pinned in
-`package-lock.json` (`@sentry/mcp-server` 0.49.0, `supergateway` 4.2.2).
+`package-lock.json` (`@sentry/mcp-server` 0.51.0, `supergateway` 4.3.0).
 
 `entrypoint.sh` configures it:
 

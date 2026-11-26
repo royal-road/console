@@ -5,6 +5,8 @@
 # Build: docker build -t sentry-mcp royal-road/plugins/sentry-mcp
 FROM registry.access.redhat.com/ubi9/nodejs-22-minimal:latest
 USER root
+# Pick up RHEL errata the base image hasn't been rebuilt with yet.
+RUN microdnf -y update --nodocs --setopt=install_weak_deps=0 && microdnf clean all
 WORKDIR /opt/app-root/src
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
